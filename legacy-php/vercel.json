@@ -1,0 +1,29 @@
+{
+  "functions": {
+    "api/index.php": {
+      "runtime": "vercel-php@0.7.3"
+    }
+  },
+  "routes": [
+    {
+      "src": "/(css|js|fonts)/(.*)",
+      "dest": "/$1/$2"
+    },
+    {
+      "src": "/(.*)\\.(png|jpg|jpeg|gif|ico|pdf|docx|mp4)",
+      "dest": "/$1.$2"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.php"
+    }
+  ],
+  "env": {
+    "DB_HOST": "aws-0-ap-northeast-1.pooler.supabase.com",
+    "DB_USER": "postgres.tpqvmupdvxqloykqkpwj",
+    "DB_NAME": "postgres",
+    "DB_PORT": "6543",
+    "DB_TYPE": "pgsql",
+    "DB_PASS": "Owaies@2026"
+  }
+}
