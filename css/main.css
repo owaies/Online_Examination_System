@@ -1,0 +1,177 @@
+/* ==========================================================================
+   GLOBAL ENHANCEMENTS - DARK THEME
+   ========================================================================== */
+:root {
+    --bg-color: #050505;
+    --grid-color: rgba(255, 255, 255, 0.03);
+    --accent-orange: #e85d22;
+    --accent-hover: #ff7338;
+    --text-main: #ffffff;
+    --text-muted: #a0a0a0;
+    --panel-bg: rgba(15, 15, 15, 0.95);
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+}
+
+body {
+    overflow-x: hidden;
+    width: 100%;
+    font-size: 14px !important;
+    font-family: var(--font-body) !important;
+    background-color: var(--bg-color) !important;
+    color: var(--text-muted) !important;
+    min-height: 100vh;
+    background-image:
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px) !important;
+    background-size: 80px 80px !important;
+    background-attachment: fixed !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.title,
+.title1,
+.title2,
+b,
+strong {
+    font-family: var(--font-heading) !important;
+    color: var(--text-main) !important;
+}
+
+/* =========================================
+   HEADER & NAVBAR
+   ========================================= */
+.header {
+    background: rgba(5, 5, 5, 0.95) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    display: flex;
+    align-items: center;
+    padding: 15px 4%;
+}
+
+.logo {
+    font-family: var(--font-heading);
+    font-size: 28px;
+    color: var(--accent-orange) !important;
+    font-weight: 900;
+}
+
+.navbar-default {
+    background: rgba(15, 15, 15, 0.9) !important;
+    backdrop-filter: blur(10px) !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.navbar-default .navbar-nav>li>a {
+    color: var(--text-main) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.navbar-default .navbar-nav>.active>a,
+.navbar-default .navbar-nav>.active>a:hover {
+    background-color: transparent !important;
+    color: var(--accent-orange) !important;
+}
+
+/* =========================================
+   PANELS & TABLES (Dark Override)
+   ========================================= */
+.panel {
+    background-color: var(--panel-bg) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    margin: 40px auto;
+    padding: 30px;
+    border-radius: 16px !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+    color: var(--text-main) !important;
+}
+
+.table {
+    color: var(--text-muted) !important;
+    margin-top: 15px;
+}
+
+.table>tbody>tr>td,
+.table>tbody>tr>th {
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    vertical-align: middle !important;
+    color: var(--text-muted) !important;
+}
+
+.table-striped>tbody>tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+.table-striped>tbody>tr:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Force text white regardless of inline styles */
+tr td {
+    color: #ccc !important;
+}
+
+tr td b,
+tr td a {
+    color: var(--text-main) !important;
+}
+
+/* =========================================
+   BUTTONS & FORMS
+   ========================================= */
+.sub1,
+.btn-primary {
+    background: var(--accent-orange) !important;
+    color: #000 !important;
+    border: none !important;
+    border-radius: 50px !important;
+    font-weight: 700 !important;
+    padding: 8px 20px !important;
+    transition: all 0.3s ease !important;
+    text-shadow: none !important;
+}
+
+.sub1:hover,
+.btn-primary:hover {
+    background: var(--accent-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(232, 93, 34, 0.3) !important;
+}
+
+.form-control {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 12px 15px !important;
+    height: auto !important;
+}
+
+.form-control:focus {
+    border-color: var(--accent-orange) !important;
+    box-shadow: 0 0 0 2px rgba(232, 93, 34, 0.2) !important;
+    background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+.log1,
+.log {
+    color: var(--text-muted) !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+}
+
+.log:hover,
+.log1 a:hover {
+    color: var(--accent-orange) !important;
+}
