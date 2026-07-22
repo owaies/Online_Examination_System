@@ -10,7 +10,7 @@ $mob = $_POST['mob'];
 $password = $_POST['password'];
 $password = md5($password);
 
-$q3=mysqli_query($con,"INSERT INTO user VALUES  ('$name' , '$gender' , '$college','$email' ,'$mob', '$password')");
+$q3=$con->query("INSERT INTO \"user\" VALUES  ('$name' , '$gender' , '$college','$email' ,'$mob', '$password')");
 if($q3)
 {
 session_start();

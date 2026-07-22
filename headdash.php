@@ -150,19 +150,19 @@ tr td b { color: var(--text-main) !important; }
 
 <!--home start-->
 <?php if(@$_GET['q']==0) {
-    $result = mysqli_query($con,"SELECT * FROM quiz ORDER BY date DESC") or die('Error');
+    $result = $con->query("SELECT * FROM quiz ORDER BY date DESC");
     echo  '<div class="panel" data-aos="fade-up"><div class="table-responsive"><table class="table table-striped title1">
     <tr><td><b>S.N.</b></td><td><b>Topic</b></td><td><b>Total question</b></td><td><b>Marks</b></td><td><b>positive</b></td><td><b>negative</b></td><td><b>Time limit</b></td><td></td></tr>';
     $c=1;
-    while($row = mysqli_fetch_array($result)) {
+    while($row = $result->fetch()) {
         $title = $row['title'];
         $total = $row['total'];
         $sahi = $row['sahi'];
         $wrong = $row['wrong'];
         $time = $row['time'];
         $eid = $row['eid'];
-        $q12=mysqli_query($con,"SELECT score FROM history WHERE eid='$eid' AND email='$email'" )or die('Error98');
-        $rowcount=mysqli_num_rows($q12);	
+        $q12=$con->query("SELECT score FROM history WHERE eid='$eid' AND email='$email'");
+        $rowcount=$q12->rowCount();
         if($rowcount == 0){
             echo '<tr><td>'.$c++.'</td><td>'.$title.'</td><td>'.$total.'</td><td>'.$sahi*$total.'</td><td>'.$sahi.'</td><td>'.$wrong.'</td><td>'.$time.'&nbsp;min</td></tr>';
         } else {
@@ -175,16 +175,16 @@ tr td b { color: var(--text-main) !important; }
 
 //ranking start
 if(@$_GET['q']== 2) {
-    $q=mysqli_query($con,"SELECT * FROM rank  ORDER BY score DESC " )or die('Error223');
+    $q=$con->query("SELECT * FROM rank  ORDER BY score DESC ");
     echo  '<div class="panel" data-aos="fade-up"><div class="table-responsive">
     <table class="table table-striped title1" >
     <tr><td><b>Rank</b></td><td><b>Name</b></td><td><b>Gender</b></td><td><b>College</b></td><td><b>Score</b></td></tr>';
     $c=0;
-    while($row=mysqli_fetch_array($q) ) {
+    while($row = $q->fetch()) {
         $e=$row['email'];
         $s=$row['score'];
-        $q12=mysqli_query($con,"SELECT * FROM user WHERE email='$e' " )or die('Error231');
-        while($row=mysqli_fetch_array($q12) ) {
+        $q12=$con->query("SELECT * FROM \"user\" WHERE email='$e' ");
+        while($row = $q12->fetch()) {
             $name=$row['name'];
             $gender=$row['gender'];
             $college=$row['college'];
@@ -198,11 +198,11 @@ if(@$_GET['q']== 2) {
 
 <!--users start-->
 <?php if(@$_GET['q']==1) {
-    $result = mysqli_query($con,"SELECT * FROM user") or die('Error');
+    $result = $con->query("SELECT * FROM \"user\"");
     echo  '<div class="panel" data-aos="fade-up"><div class="table-responsive"><table class="table table-striped title1">
     <tr><td><b>S.N.</b></td><td><b>Name</b></td><td><b>Gender</b></td><td><b>College</b></td><td><b>Email</b></td><td><b>Mobile</b></td><td></td></tr>';
     $c=1;
-    while($row = mysqli_fetch_array($result)) {
+    while($row = $result->fetch()) {
         $name = $row['name'];
         $mob = $row['mob'];
         $gender = $row['gender'];
@@ -217,11 +217,11 @@ if(@$_GET['q']== 2) {
 
 <!--feedback start-->
 <?php if(@$_GET['q']==3) {
-    $result = mysqli_query($con,"SELECT * FROM `feedback` ORDER BY `feedback`.`date` DESC") or die('Error');
+    $result = $con->query("SELECT * FROM \"feedback\" ORDER BY \"feedback\".\"date\" DESC");
     echo  '<div class="panel" data-aos="fade-up"><div class="table-responsive"><table class="table table-striped title1">
     <tr><td><b>S.N.</b></td><td><b>Subject</b></td><td><b>Email</b></td><td><b>Date</b></td><td><b>Time</b></td><td><b>By</b></td><td></td><td></td></tr>';
     $c=1;
-    while($row = mysqli_fetch_array($result)) {
+    while($row = $result->fetch()) {
         $date = $row['date'];
         $date= date("d-m-Y",strtotime($date));
         $time = $row['time'];
@@ -241,8 +241,8 @@ if(@$_GET['q']== 2) {
 <?php if(@$_GET['fid']) {
     echo '<br />';
     $id=@$_GET['fid'];
-    $result = mysqli_query($con,"SELECT * FROM feedback WHERE id='$id' ") or die('Error');
-    while($row = mysqli_fetch_array($result)) {
+    $result = $con->query("SELECT * FROM feedback WHERE id='$id' ");
+    while($row = $result->fetch()) {
         $name = $row['name'];
         $subject = $row['subject'];
         $date = $row['date'];
@@ -287,10 +287,10 @@ echo '
 
 <!--remove admin users start-->
 <?php if(@$_GET['q']==5) {
-    $result = mysqli_query($con,"SELECT * FROM admin where role ='admin' ") or die('Error');
+    $result = $con->query("SELECT * FROM admin where role ='admin' ");
     echo  '<div class="panel" data-aos="fade-up"><div class="table-responsive"><table class="table table-striped title1">
     <tr><td><b>Email</b></td><td></td></tr>';
-    while($row = mysqli_fetch_array($result)) {
+    while($row = $result->fetch()) {
         $email = $row['email'];
         echo '<tr><td>'.$email.'</td>
         <td><a title="Delete User" href="update.php?demail1='.$email.'" class="btn btn-primary" style="background:#ff5555 !important;"><span class="glyphicon glyphicon-trash" aria-hidden="true"></span> Remove</a></td></tr>';

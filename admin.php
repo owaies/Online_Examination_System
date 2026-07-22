@@ -5,8 +5,8 @@ $email = $_POST['uname'];
 $password = $_POST['password'];
 
 
-$result = mysqli_query($con,"SELECT email FROM admin WHERE email = '$email' and password = '$password' and role = 'admin'") or die('Error');
-$count=mysqli_num_rows($result);
+$result = $con->query("SELECT email FROM admin WHERE email = '$email' and password = '$password' and role = 'admin'");
+$count=$result->rowCount();
 if($count==1){
 session_start();
 if(isset($_SESSION['email'])){

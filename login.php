@@ -9,10 +9,10 @@ $email = $_POST['email'];
 $password = $_POST['password'];
 
 $password=md5($password); 
-$result = mysqli_query($con,"SELECT name FROM user WHERE email = '$email' and password = '$password'") or die('Error');
-$count=mysqli_num_rows($result);
+$result = $con->query("SELECT name FROM \"user\" WHERE email = '$email' and password = '$password'");
+$count=$result->rowCount();
 if($count==1){
-while($row = mysqli_fetch_array($result)) {
+while($row = $result->fetch()) {
 	$name = $row['name'];
 }
 $_SESSION["name"] = $name;
