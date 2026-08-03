@@ -2,6 +2,7 @@ import sql from '@/lib/db';
 import { signToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 export async function POST(req) {
   try {
@@ -10,6 +11,8 @@ export async function POST(req) {
     if (!name || !gender || !college || !email || !mob || !password) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const emailClean = email.trim().toLowerCase();
 
     // Resolve institution ID
     let institutionId = 'demo-institute';
@@ -30,22 +33,25 @@ export async function POST(req) {
     
     // Check if user already exists
     const existing = await sql`
-      SELECT email FROM "user" WHERE email = ${email}
+      SELECT email FROM "user" WHERE email = ${emailClean}
     `;
     
     if (existing.length > 0) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
     }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
     
     // Insert new user
     await sql`
       INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
-      VALUES (${name}, ${gender}, ${college}, ${email}, ${parseInt(mob)}, ${password}, ${institutionId})
+      VALUES (${name}, ${gender}, ${college}, ${emailClean}, ${parseInt(mob)}, ${hashedPassword}, ${institutionId})
     `;
     
     // Auto-create session
     const token = signToken({
-      email: email,
+      email: emailClean,
       name: name,
       role: 'student',
       institution_id: institutionId
@@ -60,7 +66,7 @@ export async function POST(req) {
       path: '/'
     });
     
-    return NextResponse.json({ success: true, user: { email, name, role: 'student' } });
+    return NextResponse.json({ success: true, user: { email: emailClean, name, role: 'student' } });
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

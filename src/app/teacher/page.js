@@ -6,7 +6,7 @@ import {
   BookOpen, PlusCircle, Users, BarChart3, MessageSquare, LogOut, 
   Trash2, Plus, ArrowRight, Save, ShieldAlert, Award, FileText,
   GraduationCap, CheckCircle, ChevronDown, HelpCircle, Sparkles,
-  Edit, List
+  Edit, List, Lock, Eye, EyeOff
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -365,7 +365,8 @@ export default function TeacherDashboard() {
               { id: 'addquiz', label: 'Add New Quiz', icon: PlusCircle },
               { id: 'students', label: 'Students List', icon: Users },
               { id: 'rankings', label: 'Student Rankings', icon: BarChart3 },
-              { id: 'feedbacks', label: 'User Feedbacks', icon: MessageSquare }
+              { id: 'feedbacks', label: 'User Feedbacks', icon: MessageSquare },
+              { id: 'change-password', label: 'Change Password', icon: Lock }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -414,12 +415,13 @@ export default function TeacherDashboard() {
             { id: 'addquiz', label: 'Add' },
             { id: 'students', label: 'Students' },
             { id: 'rankings', label: 'Ranks' },
-            { id: 'feedbacks', label: 'Feedbacks' }
+            { id: 'feedbacks', label: 'Feedbacks' },
+            { id: 'change-password', label: 'Password' }
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex-1 py-2 rounded-full font-bold transition-all uppercase tracking-wider cursor-pointer ${activeTab === t.id ? 'bg-accent-teal text-white shadow-lg shadow-accent-teal/20' : 'text-text-muted'}`}
+              className={`flex-1 py-2 px-4 rounded-full font-bold transition-all uppercase tracking-wider cursor-pointer whitespace-nowrap ${activeTab === t.id ? 'bg-accent-teal text-white shadow-lg shadow-accent-teal/20' : 'text-text-muted'}`}
             >
               {t.label}
             </button>
@@ -1138,6 +1140,22 @@ export default function TeacherDashboard() {
               )}
             </motion.div>
           )}
+
+          {activeTab === 'change-password' && (
+            <motion.div
+              key="change-password"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="max-w-md space-y-8"
+            >
+              <div>
+                <h1 className="text-3xl font-heading font-black text-white">Change Password</h1>
+                <p className="text-sm text-text-muted">Manage your secure teacher credentials.</p>
+              </div>
+              <TeacherChangePasswordForm />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -1193,5 +1211,158 @@ export default function TeacherDashboard() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function TeacherChangePasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setError('New password cannot be the same as your current password.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to change password');
+
+      setSuccess('Password updated successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-zinc-950 border border-white/10 rounded-3xl p-8 space-y-6 shadow-2xl">
+      <div className="space-y-4">
+        {/* Current Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">Current Password *</label>
+          <div className="relative">
+            <input
+              type={showCurrent ? "text" : "password"}
+              required
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrent(!showCurrent)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* New Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">New Secure Password *</label>
+          <div className="relative">
+            <input
+              type={showNew ? "text" : "password"}
+              required
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 8 characters"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew(!showNew)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Confirm New Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">Confirm New Password *</label>
+          <div className="relative">
+            <input
+              type={showConfirm ? "text" : "password"}
+              required
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(!showConfirm)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-rose-400 text-xs font-semibold text-center bg-rose-500/10 py-2 rounded-lg border border-rose-500/20">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2 rounded-lg flex items-center justify-center gap-1.5 border border-emerald-500/20">
+          <CheckCircle className="w-4 h-4" />
+          {success}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-accent-teal/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider"
+      >
+        {loading ? 'Updating Password...' : 'Change Password'}
+      </button>
+    </form>
   );
 }

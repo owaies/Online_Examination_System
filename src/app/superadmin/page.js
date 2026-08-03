@@ -225,6 +225,17 @@ export default function SuperAdminDashboard() {
               <Plus className="w-4 h-4" />
               Add Institution
             </button>
+            <button
+              onClick={() => setActiveTab('change-password')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'change-password'
+                  ? 'bg-white/5 border border-white/10 text-white shadow-md'
+                  : 'text-text-muted hover:text-white hover:bg-white/2'
+              }`}
+            >
+              <Lock className="w-4 h-4" />
+              Change Password
+            </button>
           </nav>
         </div>
 
@@ -359,6 +370,21 @@ export default function SuperAdminDashboard() {
                             </td>
                             <td className="p-4 font-semibold text-text-muted">{inst.institution_type}</td>
                             <td className="p-4">
+                              <div className="flex md:hidden gap-1 bg-white/5 p-1 rounded-full text-[10px] mb-8 overflow-x-auto">
+                                {[
+                                  { id: 'institutions', label: 'Institutions' },
+                                  { id: 'add', label: 'Add' },
+                                  { id: 'change-password', label: 'Password' }
+                                ].map((t) => (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => setActiveTab(t.id)}
+                                    className={`px-3 py-1.5 rounded-full whitespace-nowrap ${activeTab === t.id ? 'bg-accent-teal text-black' : 'text-text-muted'}`}
+                                  >
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                                 inst.status === 'active' 
                                   ? 'bg-emerald-500/10 text-emerald-400' 
@@ -546,24 +572,55 @@ export default function SuperAdminDashboard() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-text-muted uppercase font-bold">Admin Temp Password *</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Admin Temp Password *</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
+                          let generated = "";
+                          for (let i = 0; i < 12; i++) {
+                            generated += chars.charAt(Math.floor(Math.random() * chars.length));
+                          }
+                          setForm({ ...form, adminPassword: generated });
+                          setShowPassword(true);
+                        }}
+                        className="text-[10px] text-accent-teal hover:underline font-bold cursor-pointer"
+                      >
+                        Generate Secure
+                      </button>
+                    </div>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
                         required
-                        minLength={5}
+                        minLength={8}
                         value={form.adminPassword}
                         onChange={(e) => setForm({...form, adminPassword: e.target.value})}
-                        placeholder="Enter temporary password"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                        placeholder="Enter or generate temporary password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-24 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white font-mono"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                      <div className="absolute right-3 top-2.5 flex items-center gap-2">
+                        {form.adminPassword && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(form.adminPassword);
+                              showAlert('Copied temporary password to clipboard!', 'Success');
+                            }}
+                            className="text-[10px] bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-white cursor-pointer"
+                          >
+                            Copy
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="text-text-subtle hover:text-white transition-colors cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -583,6 +640,22 @@ export default function SuperAdminDashboard() {
                   {submitting ? 'Creating Tenant...' : 'Provision Tenant Account'}
                 </button>
               </form>
+            </motion.div>
+          )}
+
+          {activeTab === 'change-password' && (
+            <motion.div
+              key="change-password"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="max-w-md space-y-8"
+            >
+              <div>
+                <h1 className="text-3xl font-heading font-black text-white">Change Password</h1>
+                <p className="text-sm text-text-muted">Manage your secure super admin credentials.</p>
+              </div>
+              <SuperAdminChangePasswordForm />
             </motion.div>
           )}
         </AnimatePresence>
@@ -740,5 +813,158 @@ export default function SuperAdminDashboard() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function SuperAdminChangePasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setError('New password cannot be the same as your current password.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to change password');
+
+      setSuccess('Password updated successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-zinc-950 border border-white/10 rounded-3xl p-8 space-y-6 shadow-2xl">
+      <div className="space-y-4">
+        {/* Current Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">Current Password *</label>
+          <div className="relative">
+            <input
+              type={showCurrent ? "text" : "password"}
+              required
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrent(!showCurrent)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* New Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">New Secure Password *</label>
+          <div className="relative">
+            <input
+              type={showNew ? "text" : "password"}
+              required
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 8 characters"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew(!showNew)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Confirm New Password */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-text-muted uppercase font-bold">Confirm New Password *</label>
+          <div className="relative">
+            <input
+              type={showConfirm ? "text" : "password"}
+              required
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white placeholder:text-text-subtle"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(!showConfirm)}
+              className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+            >
+              {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-rose-400 text-xs font-semibold text-center bg-rose-500/10 py-2 rounded-lg border border-rose-500/20">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2 rounded-lg flex items-center justify-center gap-1.5 border border-emerald-500/20">
+          <CheckCircle className="w-4 h-4" />
+          {success}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-accent-teal/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider"
+      >
+        {loading ? 'Updating Password...' : 'Change Password'}
+      </button>
+    </form>
   );
 }

@@ -2,6 +2,7 @@ import sql from '@/lib/db';
 import { signToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 export async function POST(req) {
   try {
@@ -14,40 +15,53 @@ export async function POST(req) {
     let dbUser = null;
     let name = '';
     let sessionRole = role;
+    const emailClean = email.trim().toLowerCase();
     
     if (role === 'student') {
       const result = await sql`
-        SELECT name, email, institution_id FROM "user" 
-        WHERE email = ${email} AND password = ${password}
+        SELECT name, email, password, institution_id FROM "user" 
+        WHERE LOWER(email) = LOWER(${emailClean})
       `;
       if (result.length > 0) {
-        dbUser = result[0];
-        name = dbUser.name;
-        sessionRole = 'student';
+        const userRecord = result[0];
+        const isMatch = await bcrypt.compare(password, userRecord.password);
+        if (isMatch) {
+          dbUser = userRecord;
+          name = dbUser.name;
+          sessionRole = 'student';
+        }
       }
     } else if (role === 'teacher') {
       const result = await sql`
-        SELECT email, institution_id FROM "admin" 
-        WHERE email = ${email} AND password = ${password} AND role = 'admin'
+        SELECT email, password, institution_id FROM "admin" 
+        WHERE LOWER(email) = LOWER(${emailClean}) AND role = 'admin'
       `;
       if (result.length > 0) {
-        dbUser = result[0];
-        name = 'Teacher';
-        sessionRole = 'teacher';
+        const userRecord = result[0];
+        const isMatch = await bcrypt.compare(password, userRecord.password);
+        if (isMatch) {
+          dbUser = userRecord;
+          name = 'Teacher';
+          sessionRole = 'teacher';
+        }
       }
     } else if (role === 'admin') {
       const result = await sql`
-        SELECT email, role, institution_id FROM "admin" 
-        WHERE email = ${email} AND password = ${password} AND (role = 'head' OR role = 'super_admin')
+        SELECT email, role, password, institution_id, password_change_required FROM "admin" 
+        WHERE LOWER(email) = LOWER(${emailClean}) AND (role = 'head' OR role = 'super_admin')
       `;
       if (result.length > 0) {
-        dbUser = result[0];
-        if (dbUser.role === 'super_admin') {
-          name = 'Super Admin';
-          sessionRole = 'super_admin';
-        } else {
-          name = 'Administrator';
-          sessionRole = 'admin';
+        const userRecord = result[0];
+        const isMatch = await bcrypt.compare(password, userRecord.password);
+        if (isMatch) {
+          dbUser = userRecord;
+          if (dbUser.role === 'super_admin') {
+            name = 'Super Admin';
+            sessionRole = 'super_admin';
+          } else {
+            name = 'Administrator';
+            sessionRole = 'admin';
+          }
         }
       }
     }
@@ -72,7 +86,8 @@ export async function POST(req) {
       email: dbUser.email,
       name: name,
       role: sessionRole,
-      institution_id: dbUser.institution_id || null
+      institution_id: dbUser.institution_id || null,
+      password_change_required: dbUser.password_change_required || false
     });
     
     const cookieStore = await cookies();
@@ -84,7 +99,15 @@ export async function POST(req) {
       path: '/'
     });
     
-    return NextResponse.json({ success: true, user: { email: dbUser.email, name, role: sessionRole } });
+    return NextResponse.json({ 
+      success: true, 
+      user: { 
+        email: dbUser.email, 
+        name, 
+        role: sessionRole,
+        password_change_required: dbUser.password_change_required || false
+      } 
+    });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -38,6 +38,20 @@ export async function getSession() {
     }
   }
 
+  // Verify if password change is required for admin/teacher
+  if (decoded.role === 'admin' || decoded.role === 'teacher') {
+    try {
+      const adminUser = await sql`
+        SELECT password_change_required FROM "admin" WHERE email = ${decoded.email}
+      `;
+      if (adminUser.length > 0 && adminUser[0].password_change_required) {
+        return { ...decoded, passwordChangeRequired: true };
+      }
+    } catch (e) {
+      console.error("Failed to check password_change_required in auth:", e);
+    }
+  }
+
   return decoded;
 }
 

@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 export async function GET() {
   try {
@@ -10,6 +11,9 @@ export async function GET() {
     }
     if (session.isSuspended) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
+    if (session.passwordChangeRequired) {
+      return NextResponse.json({ error: 'Password change required' }, { status: 403 });
     }
 
     const instId = session.institution_id;
@@ -56,6 +60,9 @@ export async function POST(req) {
     if (session.isSuspended) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
     }
+    if (session.passwordChangeRequired) {
+      return NextResponse.json({ error: 'Password change required' }, { status: 403 });
+    }
 
     const instId = session.institution_id;
     const body = await req.json();
@@ -74,10 +81,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     if (type === 'teacher') {
       await sql`
-        INSERT INTO "admin" (email, password, role, institution_id)
-        VALUES (${emailClean}, ${password}, 'admin', ${instId})
+        INSERT INTO "admin" (email, password, role, institution_id, password_change_required)
+        VALUES (${emailClean}, ${hashedPassword}, 'admin', ${instId}, false)
       `;
     } else if (type === 'student') {
       if (!name || !gender || !college || !mob) {
@@ -85,7 +94,7 @@ export async function POST(req) {
       }
       await sql`
         INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
-        VALUES (${name}, ${gender}, ${college}, ${emailClean}, ${parseInt(mob)}, ${password}, ${instId})
+        VALUES (${name}, ${gender}, ${college}, ${emailClean}, ${parseInt(mob)}, ${hashedPassword}, ${instId})
       `;
     } else {
       return NextResponse.json({ error: 'Invalid user type' }, { status: 400 });
@@ -107,6 +116,9 @@ export async function DELETE(req) {
     if (session.isSuspended) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
     }
+    if (session.passwordChangeRequired) {
+      return NextResponse.json({ error: 'Password change required' }, { status: 403 });
+    }
 
     const instId = session.institution_id;
     const { searchParams } = new URL(req.url);
@@ -121,13 +133,13 @@ export async function DELETE(req) {
 
     if (type === 'teacher') {
       // Ensure teacher belongs to this institution
-      const result = await sql`
+      await sql`
         DELETE FROM "admin" 
         WHERE email = ${emailClean} AND role = 'admin' AND institution_id = ${instId}
       `;
     } else if (type === 'student') {
       // Ensure student belongs to this institution
-      const result = await sql`
+      await sql`
         DELETE FROM "user" 
         WHERE email = ${emailClean} AND institution_id = ${instId}
       `;
@@ -150,6 +162,9 @@ export async function PUT(req) {
     }
     if (session.isSuspended) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
+    if (session.passwordChangeRequired) {
+      return NextResponse.json({ error: 'Password change required' }, { status: 403 });
     }
 
     const instId = session.institution_id;

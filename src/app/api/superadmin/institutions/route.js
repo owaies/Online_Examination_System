@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 export async function GET(req) {
   try {
@@ -92,6 +93,7 @@ export async function POST(req) {
     }
 
     const institutionId = Math.random().toString(36).substring(2, 15);
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     // Atomically create institution and provision its admin
     await sql.begin(async sql => {
@@ -101,8 +103,8 @@ export async function POST(req) {
       `;
 
       await sql`
-        INSERT INTO "admin" (email, password, role, institution_id)
-        VALUES (${emailClean}, ${adminPassword}, 'head', ${institutionId})
+        INSERT INTO "admin" (email, password, role, institution_id, password_change_required)
+        VALUES (${emailClean}, ${hashedPassword}, 'head', ${institutionId}, true)
       `;
     });
 
