@@ -8,12 +8,16 @@ export async function GET(req, { params }) {
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { eid } = await params;
+    const instId = session.institution_id;
 
-    // Fetch quiz info
+    // Fetch quiz info and verify tenant isolation
     const quizResult = await sql`
-      SELECT title, time, total, sahi, wrong FROM "quiz" WHERE eid = ${eid}
+      SELECT title, time, total, sahi, wrong, institution_id FROM "quiz" WHERE eid = ${eid}
     `;
 
     if (quizResult.length === 0) {
@@ -21,6 +25,9 @@ export async function GET(req, { params }) {
     }
 
     const quiz = quizResult[0];
+    if (quiz.institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
+    }
 
     // Fetch questions
     const questions = await sql`
@@ -58,19 +65,27 @@ export async function POST(req, { params }) {
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { eid } = await params;
     const { answers } = await req.json(); // Map of { qid: selectedOptionId }
     const email = session.email;
+    const instId = session.institution_id;
 
-    // Fetch quiz details
+    // Fetch quiz details and verify tenant isolation
     const quizResult = await sql`
-      SELECT total, sahi, wrong, title, tag, email FROM "quiz" WHERE eid = ${eid}
+      SELECT total, sahi, wrong, title, tag, email, institution_id FROM "quiz" WHERE eid = ${eid}
     `;
     if (quizResult.length === 0) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
     }
     const quiz = quizResult[0];
+    if (quiz.institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
+    }
+
     const sahiMark = quiz.sahi;
     const wrongMark = quiz.wrong;
 
@@ -151,9 +166,13 @@ export async function POST(req, { params }) {
       }
     }
 
-    // Calculate student's dynamic rank on this quiz
+    // Calculate student's dynamic rank on this quiz within their institution
     const allAttempts = await sql`
-      SELECT email, score, date FROM "history" WHERE eid = ${eid} ORDER BY score DESC, date ASC
+      SELECT h.email, h.score, h.date 
+      FROM "history" h
+      JOIN "user" u ON h.email = u.email
+      WHERE h.eid = ${eid} AND u.institution_id = ${instId}
+      ORDER BY h.score DESC, h.date ASC
     `;
     
     let rank = 1;

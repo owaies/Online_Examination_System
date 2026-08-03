@@ -8,6 +8,9 @@ export async function GET(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { searchParams } = new URL(req.url);
     const eid = searchParams.get('eid');
@@ -16,15 +19,17 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Missing quiz ID' }, { status: 400 });
     }
 
-    // Verify ownership of the quiz
+    const instId = session.institution_id;
+
+    // Verify ownership of the quiz and matching tenant
     const quizCheck = await sql`
-      SELECT email FROM "quiz" WHERE eid = ${eid}
+      SELECT email, institution_id FROM "quiz" WHERE eid = ${eid}
     `;
     if (quizCheck.length === 0) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
     }
-    if (quizCheck[0].email !== session.email) {
-      return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+    if (quizCheck[0].email !== session.email || quizCheck[0].institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
     // Fetch questions
@@ -70,6 +75,9 @@ export async function POST(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { eid, qns, a, b, c, d, correct } = await req.json();
 
@@ -77,15 +85,17 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Missing required question fields' }, { status: 400 });
     }
 
-    // Verify ownership of the quiz
+    const instId = session.institution_id;
+
+    // Verify ownership of the quiz and matching tenant
     const quizCheck = await sql`
-      SELECT email, total FROM "quiz" WHERE eid = ${eid}
+      SELECT email, total, institution_id FROM "quiz" WHERE eid = ${eid}
     `;
     if (quizCheck.length === 0) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
     }
-    if (quizCheck[0].email !== session.email) {
-      return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+    if (quizCheck[0].email !== session.email || quizCheck[0].institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
     const qid = Math.random().toString(36).substring(2, 15);
@@ -150,6 +160,9 @@ export async function PUT(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { qid, qns, options, correctOptionId } = await req.json();
 
@@ -157,9 +170,11 @@ export async function PUT(req) {
       return NextResponse.json({ error: 'Missing required question fields' }, { status: 400 });
     }
 
-    // Verify question ownership
+    const instId = session.institution_id;
+
+    // Verify question ownership and matching tenant
     const ownerCheck = await sql`
-      SELECT q.eid, z.email 
+      SELECT q.eid, z.email, z.institution_id 
       FROM "questions" q
       JOIN "quiz" z ON q.eid = z.eid
       WHERE q.qid = ${qid}
@@ -168,8 +183,8 @@ export async function PUT(req) {
     if (ownerCheck.length === 0) {
       return NextResponse.json({ error: 'Question not found' }, { status: 404 });
     }
-    if (ownerCheck[0].email !== session.email) {
-      return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+    if (ownerCheck[0].email !== session.email || ownerCheck[0].institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
     await sql.begin(async sql => {
@@ -206,6 +221,9 @@ export async function DELETE(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { searchParams } = new URL(req.url);
     const qid = searchParams.get('qid');
@@ -214,9 +232,11 @@ export async function DELETE(req) {
       return NextResponse.json({ error: 'Missing question ID' }, { status: 400 });
     }
 
-    // Verify question ownership
+    const instId = session.institution_id;
+
+    // Verify question ownership and matching tenant
     const ownerCheck = await sql`
-      SELECT q.eid, z.email 
+      SELECT q.eid, z.email, z.institution_id 
       FROM "questions" q
       JOIN "quiz" z ON q.eid = z.eid
       WHERE q.qid = ${qid}
@@ -225,8 +245,8 @@ export async function DELETE(req) {
     if (ownerCheck.length === 0) {
       return NextResponse.json({ error: 'Question not found' }, { status: 404 });
     }
-    if (ownerCheck[0].email !== session.email) {
-      return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+    if (ownerCheck[0].email !== session.email || ownerCheck[0].institution_id !== instId) {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
     const eid = ownerCheck[0].eid;

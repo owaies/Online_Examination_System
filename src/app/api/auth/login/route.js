@@ -13,44 +13,66 @@ export async function POST(req) {
     
     let dbUser = null;
     let name = '';
+    let sessionRole = role;
     
     if (role === 'student') {
       const result = await sql`
-        SELECT name, email FROM "user" 
+        SELECT name, email, institution_id FROM "user" 
         WHERE email = ${email} AND password = ${password}
       `;
       if (result.length > 0) {
         dbUser = result[0];
         name = dbUser.name;
+        sessionRole = 'student';
       }
     } else if (role === 'teacher') {
       const result = await sql`
-        SELECT email FROM "admin" 
+        SELECT email, institution_id FROM "admin" 
         WHERE email = ${email} AND password = ${password} AND role = 'admin'
       `;
       if (result.length > 0) {
         dbUser = result[0];
         name = 'Teacher';
+        sessionRole = 'teacher';
       }
     } else if (role === 'admin') {
       const result = await sql`
-        SELECT email FROM "admin" 
-        WHERE email = ${email} AND password = ${password} AND role = 'head'
+        SELECT email, role, institution_id FROM "admin" 
+        WHERE email = ${email} AND password = ${password} AND (role = 'head' OR role = 'super_admin')
       `;
       if (result.length > 0) {
         dbUser = result[0];
-        name = 'Administrator';
+        if (dbUser.role === 'super_admin') {
+          name = 'Super Admin';
+          sessionRole = 'super_admin';
+        } else {
+          name = 'Administrator';
+          sessionRole = 'admin';
+        }
       }
     }
     
     if (!dbUser) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
+
+    // Check if institution is suspended
+    if (dbUser.institution_id) {
+      const instResult = await sql`
+        SELECT status FROM "institution" WHERE id = ${dbUser.institution_id}
+      `;
+      if (instResult.length > 0 && instResult[0].status === 'suspended') {
+        return NextResponse.json({
+          error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator."
+        }, { status: 403 });
+      }
+    }
     
     const token = signToken({
       email: dbUser.email,
       name: name,
-      role: role
+      role: sessionRole,
+      institution_id: dbUser.institution_id || null
     });
     
     const cookieStore = await cookies();
@@ -62,7 +84,7 @@ export async function POST(req) {
       path: '/'
     });
     
-    return NextResponse.json({ success: true, user: { email: dbUser.email, name, role } });
+    return NextResponse.json({ success: true, user: { email: dbUser.email, name, role: sessionRole } });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

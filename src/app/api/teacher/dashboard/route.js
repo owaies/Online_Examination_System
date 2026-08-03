@@ -8,22 +8,34 @@ export async function GET() {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
-    // 1. Get all students
+    const instId = session.institution_id;
+
+    // 1. Get students belonging to this institution
     const students = await sql`
-      SELECT name, gender, college, email, mob FROM "user" ORDER BY name ASC
+      SELECT name, gender, college, email, mob FROM "user" 
+      WHERE institution_id = ${instId}
+      ORDER BY name ASC
     `;
 
-    // 2. Get feedbacks
+    // 2. Get feedbacks submitted by students belonging to this institution
     const feedbacks = await sql`
-      SELECT id, name, email, subject, feedback, date, time FROM "feedback" ORDER BY date DESC, time DESC
+      SELECT f.id, f.name, f.email, f.subject, f.feedback, f.date, f.time 
+      FROM "feedback" f
+      JOIN "user" u ON f.email = u.email
+      WHERE u.institution_id = ${instId}
+      ORDER BY f.date DESC, f.time DESC
     `;
 
-    // 3. Get rankings
+    // 3. Get rankings of students belonging to this institution
     const rankings = await sql`
       SELECT r.email, r.score, u.name, u.college
       FROM "rank" r
       JOIN "user" u ON r.email = u.email
+      WHERE u.institution_id = ${instId}
       ORDER BY r.score DESC
     `;
 
@@ -31,7 +43,7 @@ export async function GET() {
     const quizzes = await sql`
       SELECT eid, title, total, sahi, wrong, time, tag, date, email
       FROM "quiz"
-      WHERE email = ${session.email}
+      WHERE email = ${session.email} AND institution_id = ${instId}
       ORDER BY date DESC
     `;
 
@@ -53,6 +65,9 @@ export async function POST(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const { title, sahi, wrong, time, tag, desc, questions } = await req.json();
     
@@ -62,14 +77,15 @@ export async function POST(req) {
 
     const eid = Math.random().toString(36).substring(2, 15);
     const email = session.email;
+    const instId = session.institution_id;
     const totalQuestions = questions.length;
 
     // Use transaction for atomic insertion of Quiz + Questions + Options + Answers
     await sql.begin(async sql => {
       // 1. Insert Quiz
       await sql`
-        INSERT INTO "quiz" (eid, title, sahi, wrong, total, time, intro, tag, date, email)
-        VALUES (${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email})
+        INSERT INTO "quiz" (eid, title, sahi, wrong, total, time, intro, tag, date, email, institution_id)
+        VALUES (${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email}, ${instId})
       `;
 
       // 2. Insert Questions, Options, and Correct Answers
@@ -123,7 +139,11 @@ export async function DELETE(req) {
     if (!session || session.role !== 'teacher') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
+    const instId = session.institution_id;
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type'); // 'quiz' | 'student' | 'feedback'
     const id = searchParams.get('id');
@@ -133,13 +153,15 @@ export async function DELETE(req) {
     }
 
     if (type === 'quiz') {
-      // Verify ownership of the quiz
-      const quizCheck = await sql`SELECT email FROM "quiz" WHERE eid = ${id}`;
+      // Verify ownership of the quiz and matching tenant
+      const quizCheck = await sql`
+        SELECT email, institution_id FROM "quiz" WHERE eid = ${id}
+      `;
       if (quizCheck.length === 0) {
         return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
       }
-      if (quizCheck[0].email !== session.email) {
-        return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+      if (quizCheck[0].email !== session.email || quizCheck[0].institution_id !== instId) {
+        return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
       }
 
       // Use transaction to clean up quiz
@@ -165,6 +187,14 @@ export async function DELETE(req) {
         await sql`DELETE FROM "quiz" WHERE eid = ${id}`;
       });
     } else if (type === 'student') {
+      // Verify student matches the institution
+      const studentCheck = await sql`
+        SELECT institution_id FROM "user" WHERE email = ${id}
+      `;
+      if (studentCheck.length === 0 || studentCheck[0].institution_id !== instId) {
+        return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
+      }
+
       await sql.begin(async sql => {
         // Delete ranks
         await sql`DELETE FROM "rank" WHERE email = ${id}`;
@@ -174,6 +204,16 @@ export async function DELETE(req) {
         await sql`DELETE FROM "user" WHERE email = ${id}`;
       });
     } else if (type === 'feedback') {
+      // Verify feedback submitter belongs to this institution
+      const fbCheck = await sql`
+        SELECT f.id FROM "feedback" f
+        JOIN "user" u ON f.email = u.email
+        WHERE f.id = ${id} AND u.institution_id = ${instId}
+      `;
+      if (fbCheck.length === 0) {
+        return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
+      }
+
       await sql`
         DELETE FROM "feedback" WHERE id = ${id}
       `;

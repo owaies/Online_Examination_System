@@ -105,7 +105,7 @@ export default function Home() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [signupForm, setSignupForm] = useState({
-    name: '', gender: 'M', college: '', email: '', mob: '', password: '', cpassword: ''
+    name: '', gender: 'M', college: '', email: '', mob: '', password: '', cpassword: '', institutionCode: ''
   });
 
   const { scrollYProgress } = useScroll();
@@ -129,9 +129,10 @@ export default function Home() {
       setSuccess('Logged in successfully!');
       setTimeout(() => {
         setActiveModal(null);
-        if (role === 'student') router.push('/student');
-        else if (role === 'teacher') router.push('/teacher');
-        else if (role === 'admin') router.push('/admin');
+        if (data.user.role === 'super_admin') router.push('/superadmin');
+        else if (data.user.role === 'student') router.push('/student');
+        else if (data.user.role === 'teacher') router.push('/teacher');
+        else if (data.user.role === 'admin') router.push('/admin');
       }, 1000);
     } catch (err) {
       setError(err.message);
@@ -752,6 +753,7 @@ export default function Home() {
                       <option value="F">Female</option>
                     </select>
                     <input type="text" placeholder="College / Institution" required value={signupForm.college} onChange={(e) => setSignupForm({...signupForm, college: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
+                    <input type="text" placeholder="Institution Code (Optional)" value={signupForm.institutionCode || ''} onChange={(e) => setSignupForm({...signupForm, institutionCode: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
                     <input type="email" placeholder="Email address" required value={signupForm.email} onChange={(e) => setSignupForm({...signupForm, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
                     <input type="tel" pattern="[0-9]{10}" maxLength="10" minLength="10" placeholder="10-digit Mobile Number" required value={signupForm.mob} onChange={(e) => setSignupForm({...signupForm, mob: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
                     <div className="relative">

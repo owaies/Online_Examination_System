@@ -5,10 +5,27 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req) {
   try {
-    const { name, gender, college, email, mob, password } = await req.json();
+    const { name, gender, college, email, mob, password, institutionCode } = await req.json();
     
     if (!name || !gender || !college || !email || !mob || !password) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Resolve institution ID
+    let institutionId = 'demo-institute';
+    if (institutionCode) {
+      const codeClean = institutionCode.trim();
+      const instResult = await sql`
+        SELECT id, status FROM "institution" 
+        WHERE LOWER(institution_code) = LOWER(${codeClean})
+      `;
+      if (instResult.length === 0) {
+        return NextResponse.json({ error: 'Invalid institution code' }, { status: 400 });
+      }
+      if (instResult[0].status === 'suspended') {
+        return NextResponse.json({ error: 'This institution is suspended' }, { status: 403 });
+      }
+      institutionId = instResult[0].id;
     }
     
     // Check if user already exists
@@ -22,15 +39,16 @@ export async function POST(req) {
     
     // Insert new user
     await sql`
-      INSERT INTO "user" (name, gender, college, email, mob, password)
-      VALUES (${name}, ${gender}, ${college}, ${email}, ${parseInt(mob)}, ${password})
+      INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
+      VALUES (${name}, ${gender}, ${college}, ${email}, ${parseInt(mob)}, ${password}, ${institutionId})
     `;
     
     // Auto-create session
     const token = signToken({
       email: email,
       name: name,
-      role: 'student'
+      role: 'student',
+      institution_id: institutionId
     });
     
     const cookieStore = await cookies();

@@ -8,19 +8,23 @@ export async function GET() {
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+    }
 
     const email = session.email;
+    const instId = session.institution_id;
 
-    // 1. Get all available quizzes
-    // We want to list quizzes that this student hasn't taken yet, or just list all
+    // 1. Get available quizzes belonging to this institution
     const quizzes = await sql`
       SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date, q.email,
              (SELECT COUNT(*) FROM "history" h WHERE h.eid = q.eid AND h.email = ${email}) as attempted
       FROM "quiz" q
+      WHERE q.institution_id = ${instId}
       ORDER BY q.date DESC
     `;
 
-    // 2. Get student history
+    // 2. Get student history (since student belongs to institution, history automatically isolates by email)
     const history = await sql`
       SELECT h.eid, h.score, h.sahi, h.wrong, h.date, q.title, q.total, q.time
       FROM "history" h
@@ -29,11 +33,12 @@ export async function GET() {
       ORDER BY h.date DESC
     `;
 
-    // 3. Get global leaderboard / ranking
+    // 3. Get global leaderboard / ranking restricted to student's institution
     const rankings = await sql`
       SELECT r.email, r.score, u.name, u.college
       FROM "rank" r
       JOIN "user" u ON r.email = u.email
+      WHERE u.institution_id = ${instId}
       ORDER BY r.score DESC, r.time ASC
       LIMIT 10
     `;
@@ -55,6 +60,9 @@ export async function POST(req) {
     const session = await getSession();
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
     }
 
     const { feedback, subject } = await req.json();

@@ -4,21 +4,38 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, UserPlus, Trash2, LogOut, ShieldAlert, Mail, Lock,
-  GraduationCap, CheckCircle, HelpCircle, Sparkles, Eye, EyeOff
+  GraduationCap, CheckCircle, HelpCircle, Sparkles, Building, Globe, MapPin, Phone,
+  Plus, Search, ArrowRight, Eye, EyeOff, CheckSquare, Users, BookOpen
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'teachers' | 'students' | 'profile'
   const [teachers, setTeachers] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [institution, setInstitution] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // New teacher form state
+
+  // Forms state
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [addSuccess, setAddSuccess] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [addTeacherSuccess, setAddTeacherSuccess] = useState('');
+  const [submittingTeacher, setSubmittingTeacher] = useState(false);
+
+  const [studentForm, setStudentForm] = useState({
+    name: '', gender: 'M', college: '', email: '', mob: '', password: ''
+  });
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [addStudentSuccess, setAddStudentSuccess] = useState('');
+  const [submittingStudent, setSubmittingStudent] = useState(false);
+
+  const [profileForm, setProfileForm] = useState({
+    name: '', phone: '', website: '', address: '', logoUrl: ''
+  });
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   // Custom dialog state
   const [modalConfig, setModalConfig] = useState({
@@ -64,7 +81,7 @@ export default function AdminDashboard() {
     });
   };
 
-  const fetchTeachers = async () => {
+  const fetchDashboardData = async () => {
     try {
       const res = await fetch('/api/admin/dashboard');
       if (!res.ok) {
@@ -75,7 +92,20 @@ export default function AdminDashboard() {
         throw new Error('Failed to load admin dashboard');
       }
       const json = await res.json();
-      setTeachers(json.teachers);
+      setTeachers(json.teachers || []);
+      setStudents(json.students || []);
+      setInstitution(json.institution || null);
+      if (json.institution) {
+        setProfileForm({
+          name: json.institution.name || '',
+          phone: json.institution.phone || '',
+          website: json.institution.website || '',
+          address: json.institution.address || '',
+          logoUrl: json.institution.logo_url || ''
+        });
+        // Default student college field to institution name for ease
+        setStudentForm(prev => ({ ...prev, college: json.institution.name }));
+      }
     } catch (err) {
       showAlert(err.message, 'Error');
     } finally {
@@ -84,7 +114,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchTeachers();
+    fetchDashboardData();
   }, []);
 
   const handleLogout = async () => {
@@ -94,26 +124,26 @@ export default function AdminDashboard() {
 
   const handleAddTeacher = async (e) => {
     e.preventDefault();
-    setSubmitting(true);
-    setAddSuccess('');
+    setSubmittingTeacher(true);
+    setAddTeacherSuccess('');
 
     try {
       const res = await fetch('/api/admin/dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: newEmail, password: newPassword })
+        body: JSON.stringify({ type: 'teacher', email: newEmail, password: newPassword })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to add teacher');
       
-      setAddSuccess('Teacher added successfully!');
+      setAddTeacherSuccess('Teacher added successfully!');
       setNewEmail('');
       setNewPassword('');
-      fetchTeachers();
+      fetchDashboardData();
     } catch (err) {
       showAlert(err.message, 'Error');
     } finally {
-      setSubmitting(false);
+      setSubmittingTeacher(false);
     }
   };
 
@@ -122,14 +152,79 @@ export default function AdminDashboard() {
     if (!confirmed) return;
     
     try {
-      const res = await fetch(`/api/admin/dashboard?email=${email}`, {
+      const res = await fetch(`/api/admin/dashboard?email=${email}&type=teacher`, {
         method: 'DELETE'
       });
       if (!res.ok) throw new Error('Failed to remove teacher');
-      fetchTeachers();
+      fetchDashboardData();
       showAlert('Teacher account removed successfully.', 'Success');
     } catch (err) {
       showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    setSubmittingStudent(true);
+    setAddStudentSuccess('');
+
+    try {
+      const res = await fetch('/api/admin/dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'student', ...studentForm })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to add student');
+      
+      setAddStudentSuccess('Student added successfully!');
+      setStudentForm({
+        name: '', gender: 'M', college: institution?.name || '', email: '', mob: '', password: ''
+      });
+      fetchDashboardData();
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    } finally {
+      setSubmittingStudent(false);
+    }
+  };
+
+  const handleDeleteStudent = async (email) => {
+    const confirmed = await showConfirm(`Are you sure you want to delete student: ${email}?`, 'Confirm Action');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/admin/dashboard?email=${email}&type=student`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to remove student');
+      fetchDashboardData();
+      showAlert('Student account removed successfully.', 'Success');
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setUpdatingProfile(true);
+    setProfileSuccess('');
+
+    try {
+      const res = await fetch('/api/admin/dashboard', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update profile');
+
+      setProfileSuccess('Institution profile updated successfully!');
+      fetchDashboardData();
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    } finally {
+      setUpdatingProfile(false);
     }
   };
 
@@ -151,9 +246,13 @@ export default function AdminDashboard() {
       <nav className="border-b border-white/5 bg-background/80 backdrop-blur-md py-4 px-6 md:px-12 flex justify-between items-center fixed top-0 left-0 right-0 z-50">
         <div className="flex items-center gap-2.5 text-lg font-heading font-black tracking-wider text-white">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-teal to-accent-teal-light flex items-center justify-center">
-            <GraduationCap className="text-white w-4 h-4" />
+            {institution?.logo_url ? (
+              <img src={institution.logo_url} alt="Logo" className="w-full h-full object-cover rounded-lg" />
+            ) : (
+              <GraduationCap className="text-white w-4 h-4" />
+            )}
           </div>
-          <span>The Creator Dashboard</span>
+          <span className="truncate max-w-[200px] sm:max-w-none">{institution?.name || 'Institute Dashboard'}</span>
         </div>
         <button 
           onClick={handleLogout}
@@ -164,112 +263,529 @@ export default function AdminDashboard() {
         </button>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-12 mt-24 mb-8">
-        
-        {/* Left 2 Columns: Teachers List */}
-        <div className="lg:col-span-2 space-y-6">
-          <div>
-            <h1 className="text-3xl font-heading font-black mb-2">Manage Teachers</h1>
-            <p className="text-text-muted text-sm">Add or remove academic moderators who supervise quiz creating and student tracking.</p>
-          </div>
-
-          {teachers.length === 0 ? (
-            <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted">
-              No teachers registered. Add one using the form on the right.
-            </div>
-          ) : (
-            <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
-                    <th className="p-4">Teacher Email ID</th>
-                    <th className="p-4 w-32 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-sm">
-                  {teachers.map((teacher) => (
-                    <tr key={teacher.email} className="hover:bg-white/2 transition-colors">
-                      <td className="p-4 font-bold">{teacher.email}</td>
-                      <td className="p-4 text-center">
-                        <button
-                          onClick={() => handleDeleteTeacher(teacher.email)}
-                          className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Right 1 Column: Add Teacher Form */}
-        <div className="space-y-6">
-          <div className="bg-zinc-950 border border-white/10 rounded-3xl p-8 shadow-xl space-y-6">
-            <h3 className="text-xl font-heading font-bold text-accent-teal-light flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-accent-teal" />
-              Add Teacher
-            </h3>
-            
-            <form onSubmit={handleAddTeacher} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wider font-bold text-text-muted">Teacher Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-text-subtle" />
-                  <input
-                    type="email"
-                    required
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="Enter teacher email"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wider font-bold text-text-muted">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-text-subtle" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter password"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-11 pr-11 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-2.5 text-text-subtle hover:text-white transition-colors cursor-pointer"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {addSuccess && <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2 rounded-lg flex items-center justify-center gap-1"><CheckCircle className="w-3.5 h-3.5" />{addSuccess}</div>}
-
+      {/* Main Tab Controller Header */}
+      <div className="max-w-7xl mx-auto w-full px-6 md:px-12 mt-24">
+        <div className="flex border-b border-white/5 gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {[
+            { id: 'overview', label: 'Overview', icon: Building },
+            { id: 'teachers', label: 'Teachers', icon: Users },
+            { id: 'students', label: 'Students', icon: GraduationCap },
+            { id: 'profile', label: 'Institution Profile', icon: Globe }
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
               <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-accent-teal/20 cursor-pointer disabled:opacity-50"
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setAddTeacherSuccess('');
+                  setAddStudentSuccess('');
+                  setProfileSuccess('');
+                }}
+                className={`flex items-center gap-2 px-5 py-3 rounded-t-xl text-xs uppercase font-bold tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === tab.id 
+                    ? 'border-b-2 border-accent-teal text-white' 
+                    : 'text-text-muted hover:text-white'
+                }`}
               >
-                {submitting ? 'Creating...' : 'Create Teacher Account'}
+                <Icon className="w-4 h-4" />
+                {tab.label}
               </button>
-            </form>
-          </div>
+            );
+          })}
         </div>
+      </div>
+
+      {/* Tab Panels */}
+      <main className="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full mt-4 mb-8">
+        <AnimatePresence mode="wait">
+          
+          {activeTab === 'overview' && (
+            <motion.div
+              key="overview"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            >
+              {/* Stats overview */}
+              <div className="md:col-span-2 space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl flex items-center justify-between shadow-lg">
+                    <div>
+                      <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Total Teachers</p>
+                      <p className="text-3xl font-black mt-2 text-white">{teachers.length}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-sky-500/10 flex items-center justify-center">
+                      <Users className="w-5 h-5 text-sky-400" />
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl flex items-center justify-between shadow-lg">
+                    <div>
+                      <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Total Students</p>
+                      <p className="text-3xl font-black mt-2 text-white">{students.length}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-accent-teal/10 flex items-center justify-center">
+                      <GraduationCap className="w-5 h-5 text-accent-teal" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl space-y-4 shadow-lg">
+                  <h3 className="font-heading font-black text-lg">Quick Actions</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      onClick={() => setActiveTab('teachers')}
+                      className="p-4 bg-white/3 border border-white/5 rounded-2xl text-center hover:bg-white/5 transition-colors cursor-pointer text-xs font-bold"
+                    >
+                      Manage Teachers
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('students')}
+                      className="p-4 bg-white/3 border border-white/5 rounded-2xl text-center hover:bg-white/5 transition-colors cursor-pointer text-xs font-bold"
+                    >
+                      Manage Students
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('profile')}
+                      className="p-4 bg-white/3 border border-white/5 rounded-2xl text-center hover:bg-white/5 transition-colors cursor-pointer text-xs font-bold"
+                    >
+                      Institution Profile
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Institution details panel */}
+              <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl space-y-4 h-fit shadow-lg">
+                <h3 className="font-heading font-black text-lg border-b border-white/5 pb-2">Institution Specs</h3>
+                <div className="space-y-3 text-xs leading-relaxed text-text-muted">
+                  <div>
+                    <span className="font-bold text-white block">Tenant Code</span>
+                    <span className="font-mono text-sky-400 text-xs uppercase">{institution?.institution_code}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-white block">Official Email</span>
+                    <span>{institution?.email}</span>
+                  </div>
+                  {institution?.phone && (
+                    <div>
+                      <span className="font-bold text-white block">Phone</span>
+                      <span>{institution.phone}</span>
+                    </div>
+                  )}
+                  {institution?.website && (
+                    <div>
+                      <span className="font-bold text-white block">Website</span>
+                      <a href={institution.website} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
+                        {institution.website}
+                      </a>
+                    </div>
+                  )}
+                  {institution?.address && (
+                    <div>
+                      <span className="font-bold text-white block">Address</span>
+                      <span>{institution.address}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'teachers' && (
+            <motion.div
+              key="teachers"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 lg:grid-cols-3 gap-12"
+            >
+              <div className="lg:col-span-2 space-y-6">
+                <div>
+                  <h1 className="text-3xl font-heading font-black mb-2">Manage Teachers</h1>
+                  <p className="text-text-muted text-sm">Add or remove moderators who construct exams and evaluate student performance.</p>
+                </div>
+
+                {teachers.length === 0 ? (
+                  <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                    No teachers registered. Add one using the form on the right.
+                  </div>
+                ) : (
+                  <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
+                          <th className="p-4">Teacher Email ID</th>
+                          <th className="p-4 w-32 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-sm">
+                        {teachers.map((teacher) => (
+                          <tr key={teacher.email} className="hover:bg-white/2 transition-colors">
+                            <td className="p-4 font-bold">{teacher.email}</td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={() => handleDeleteTeacher(teacher.email)}
+                                className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl space-y-6 h-fit shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center">
+                    <UserPlus className="text-accent-teal w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-black text-lg">Add Teacher</h3>
+                    <p className="text-text-muted text-[10px] uppercase font-bold tracking-wider">MODERATOR ACCOUNT</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddTeacher} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Email Address *</label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-text-subtle absolute left-3 top-3" />
+                      <input
+                        type="email"
+                        required
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="teacher@school.com"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-9 pr-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Password *</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-text-subtle absolute left-3 top-3" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={5}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-9 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {addTeacherSuccess && (
+                    <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2.5 rounded-lg flex items-center justify-center gap-1.5 border border-emerald-500/20">
+                      <CheckCircle className="w-4 h-4" />
+                      {addTeacherSuccess}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submittingTeacher}
+                    className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-accent-teal/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider"
+                  >
+                    {submittingTeacher ? 'Adding Teacher...' : 'Add Teacher Account'}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'students' && (
+            <motion.div
+              key="students"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 lg:grid-cols-3 gap-12"
+            >
+              <div className="lg:col-span-2 space-y-6">
+                <div>
+                  <h1 className="text-3xl font-heading font-black mb-2">Manage Students</h1>
+                  <p className="text-text-muted text-sm">Add or remove student accounts registered in your institution.</p>
+                </div>
+
+                {students.length === 0 ? (
+                  <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                    No students registered. Add one using the form on the right.
+                  </div>
+                ) : (
+                  <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
+                          <th className="p-4">Student Name</th>
+                          <th className="p-4">Email ID</th>
+                          <th className="p-4">Mobile</th>
+                          <th className="p-4 w-32 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-sm">
+                        {students.map((student) => (
+                          <tr key={student.email} className="hover:bg-white/2 transition-colors">
+                            <td className="p-4 font-bold">{student.name}</td>
+                            <td className="p-4">{student.email}</td>
+                            <td className="p-4 font-mono text-xs">{student.mob}</td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={() => handleDeleteStudent(student.email)}
+                                className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-zinc-950 border border-white/10 p-6 rounded-3xl space-y-6 h-fit shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center">
+                    <UserPlus className="text-accent-teal w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-black text-lg">Add Student</h3>
+                    <p className="text-text-muted text-[10px] uppercase font-bold tracking-wider">CANDIDATE ACCOUNT</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddStudent} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={studentForm.name}
+                      onChange={(e) => setStudentForm({...studentForm, name: e.target.value})}
+                      placeholder="e.g. Rahul Sharma"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Gender *</label>
+                      <select
+                        value={studentForm.gender}
+                        onChange={(e) => setStudentForm({...studentForm, gender: e.target.value})}
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all text-white cursor-pointer"
+                      >
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">College / Class *</label>
+                      <input
+                        type="text"
+                        required
+                        value={studentForm.college}
+                        onChange={(e) => setStudentForm({...studentForm, college: e.target.value})}
+                        placeholder="Class / Dept"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Email ID *</label>
+                    <input
+                      type="email"
+                      required
+                      value={studentForm.email}
+                      onChange={(e) => setStudentForm({...studentForm, email: e.target.value})}
+                      placeholder="rahul@school.com"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Mobile Number (10 digits) *</label>
+                    <input
+                      type="tel"
+                      pattern="[0-9]{10}"
+                      maxLength="10"
+                      minLength="10"
+                      required
+                      value={studentForm.mob}
+                      onChange={(e) => setStudentForm({...studentForm, mob: e.target.value})}
+                      placeholder="10-digit number"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Temporary Password *</label>
+                    <div className="relative">
+                      <input
+                        type={showStudentPassword ? "text" : "password"}
+                        required
+                        minLength={5}
+                        value={studentForm.password}
+                        onChange={(e) => setStudentForm({...studentForm, password: e.target.value})}
+                        placeholder="••••••••"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStudentPassword(!showStudentPassword)}
+                        className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                      >
+                        {showStudentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {addStudentSuccess && (
+                    <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2.5 rounded-lg flex items-center justify-center gap-1.5 border border-emerald-500/20">
+                      <CheckCircle className="w-4 h-4" />
+                      {addStudentSuccess}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submittingStudent}
+                    className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-accent-teal/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider"
+                  >
+                    {submittingStudent ? 'Adding Student...' : 'Add Student Account'}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'profile' && (
+            <motion.div
+              key="profile"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-2xl space-y-6"
+            >
+              <div>
+                <h1 className="text-3xl font-heading font-black mb-2">Institution Profile</h1>
+                <p className="text-text-muted text-sm">Review or customize your institution specs and contact credentials.</p>
+              </div>
+
+              <form onSubmit={handleUpdateProfile} className="bg-zinc-950 border border-white/10 rounded-3xl p-8 space-y-6 shadow-2xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Institution Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm({...profileForm, name: e.target.value})}
+                      placeholder="Name"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Institution Code</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={institution?.institution_code || ''}
+                      className="w-full bg-white/2 border border-white/5 rounded-xl py-2.5 px-4 text-xs text-text-subtle font-mono uppercase cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Official Phone Number</label>
+                    <input
+                      type="tel"
+                      value={profileForm.phone}
+                      onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})}
+                      placeholder="e.g. +917619329863"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Website URL</label>
+                    <input
+                      type="url"
+                      value={profileForm.website}
+                      onChange={(e) => setProfileForm({...profileForm, website: e.target.value})}
+                      placeholder="e.g. https://my-school.com"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Institution Logo URL</label>
+                  <input
+                    type="url"
+                    value={profileForm.logoUrl}
+                    onChange={(e) => setProfileForm({...profileForm, logoUrl: e.target.value})}
+                    placeholder="e.g. https://logo.com/logo.png"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Physical Address</label>
+                  <textarea
+                    rows={3}
+                    value={profileForm.address}
+                    onChange={(e) => setProfileForm({...profileForm, address: e.target.value})}
+                    placeholder="Physical address specs..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle text-white resize-none"
+                  />
+                </div>
+
+                {profileSuccess && (
+                  <div className="text-emerald-400 text-xs font-semibold text-center bg-emerald-500/10 py-2.5 rounded-lg flex items-center justify-center gap-1.5 border border-emerald-500/20">
+                    <CheckCircle className="w-4 h-4" />
+                    {profileSuccess}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={updatingProfile}
+                  className="w-full bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-accent-teal/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider"
+                >
+                  {updatingProfile ? 'Saving profile changes...' : 'Save Profile Changes'}
+                </button>
+              </form>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-8 text-center text-text-muted text-[10px] tracking-widest">
+      <footer className="border-t border-white/5 py-8 text-center text-text-muted text-[10px] tracking-widest mt-auto">
         <p>e-EXAMINER &copy; 2026. ALL RIGHTS RESERVED.</p>
       </footer>
 
