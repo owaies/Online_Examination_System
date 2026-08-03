@@ -239,7 +239,6 @@ export default function QuizSession() {
                 </div>
               </motion.div>
             ) : (
-              /* Score Card / Result screen */
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -250,33 +249,51 @@ export default function QuizSession() {
                 </div>
                 <div>
                   <h2 className="text-3xl font-heading font-black">Exam Completed!</h2>
-                  <p className="text-text-muted text-sm mt-2">Your score has been graded and synced to Supabase rankings.</p>
+                  <p className="text-accent-teal-light font-semibold text-lg mt-2">{result?.title || data?.quiz?.title}</p>
+                  <p className="text-text-muted text-xs mt-1 uppercase tracking-wider">Subject: {result?.tag || data?.quiz?.tag} | Teacher: {result?.teacherName || 'Instructor'}</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
+                <div className="bg-white/3 border border-white/5 rounded-2xl p-4 max-w-sm mx-auto flex flex-col items-center justify-center">
+                  <span className="text-xs text-text-muted uppercase font-bold tracking-wider">Your Rank</span>
+                  <span className="text-3xl font-black text-accent-teal mt-1">#{result?.rank || 1}</span>
+                  <span className="text-xs text-text-muted mt-1">out of {result?.totalStudents || 1} student{(result?.totalStudents || 1) > 1 ? 's' : ''}</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-xl mx-auto">
                   <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4">
-                    <CheckCircle2 className="text-emerald-400 w-6 h-6 mx-auto mb-2" />
-                    <p className="text-xs text-text-muted font-bold uppercase">Correct</p>
-                    <p className="text-2xl font-black text-emerald-400 mt-1">{result?.sahi}</p>
+                    <p className="text-[10px] text-text-muted font-bold uppercase">Correct</p>
+                    <p className="text-xl font-black text-emerald-400 mt-1">{result?.sahi} / {result?.total}</p>
                   </div>
                   <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-4">
-                    <XCircle className="text-rose-500 w-6 h-6 mx-auto mb-2" />
-                    <p className="text-xs text-text-muted font-bold uppercase">Wrong</p>
-                    <p className="text-2xl font-black text-rose-500 mt-1">{result?.wrong}</p>
+                    <p className="text-[10px] text-text-muted font-bold uppercase">Incorrect</p>
+                    <p className="text-xl font-black text-rose-500 mt-1">{result?.wrong} / {result?.total}</p>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <p className="text-[10px] text-text-muted font-bold uppercase">Accuracy</p>
+                    <p className="text-xl font-black text-white mt-1">
+                      {result?.total > 0 ? Math.round((result?.sahi / result?.total) * 100) : 0}%
+                    </p>
                   </div>
                   <div className="bg-accent-teal/5 border border-accent-teal/10 rounded-2xl p-4">
-                    <FileText className="text-accent-teal w-6 h-6 mx-auto mb-2" />
-                    <p className="text-xs text-text-muted font-bold uppercase">Final Score</p>
-                    <p className="text-2xl font-black text-accent-teal mt-1">{result?.score}</p>
+                    <p className="text-[10px] text-text-muted font-bold uppercase">Final Score</p>
+                    <p className="text-xl font-black text-accent-teal mt-1">{result?.score}</p>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => router.push('/student')}
-                  className="bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white font-bold px-8 py-3 rounded-full transition-all shadow-lg shadow-accent-teal/20 cursor-pointer"
-                >
-                  Return to Dashboard
-                </button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                  <button
+                    onClick={() => router.push(`/student?tab=leaderboard&eid=${eid}`)}
+                    className="w-full sm:w-auto bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white font-bold px-8 py-3 rounded-full transition-all shadow-lg shadow-accent-teal/20 cursor-pointer"
+                  >
+                    View Leaderboard
+                  </button>
+                  <button
+                    onClick={() => router.push('/student')}
+                    className="w-full sm:w-auto bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-8 py-3 rounded-full transition-colors cursor-pointer"
+                  >
+                    Return to Dashboard
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

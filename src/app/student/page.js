@@ -21,6 +21,29 @@ export default function StudentDashboard() {
   const [feedbackSuccess, setFeedbackSuccess] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
+  // Leaderboard Filter States
+  const [leaderboardView, setLeaderboardView] = useState('global'); // 'global' | 'quiz'
+  const [selectedQuizId, setSelectedQuizId] = useState(null);
+  const [quizLeaderboard, setQuizLeaderboard] = useState([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const [subFilterSubject, setSubFilterSubject] = useState('');
+  const [subFilterTeacher, setSubFilterTeacher] = useState('');
+  const [subFilterQuiz, setSubFilterQuiz] = useState('');
+
+  const fetchQuizLeaderboard = async (eid) => {
+    setLoadingLeaderboard(true);
+    try {
+      const res = await fetch(`/api/leaderboard?eid=${eid}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load leaderboard');
+      setQuizLeaderboard(json.leaderboard || []);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    } finally {
+      setLoadingLeaderboard(false);
+    }
+  };
+
   // Custom dialog state
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -86,6 +109,20 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     fetchDashboardData();
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      const eid = params.get('eid');
+      if (tab === 'leaderboard') {
+        setActiveTab('leaderboard');
+        if (eid) {
+          setLeaderboardView('quiz');
+          setSelectedQuizId(eid);
+          fetchQuizLeaderboard(eid);
+        }
+      }
+    }
   }, []);
 
   const handleLogout = async () => {
@@ -115,6 +152,17 @@ export default function StudentDashboard() {
       setSubmittingFeedback(false);
     }
   };
+
+  // Leaderboard filters computation
+  const uniqueSubjects = data?.quizzes ? Array.from(new Set(data.quizzes.map(q => q.tag).filter(Boolean))) : [];
+  
+  const filteredTeachers = data?.quizzes && subFilterSubject 
+    ? Array.from(new Set(data.quizzes.filter(q => q.tag === subFilterSubject).map(q => q.email).filter(Boolean)))
+    : [];
+
+  const filteredQuizzes = data?.quizzes && subFilterSubject && subFilterTeacher
+    ? data.quizzes.filter(q => q.tag === subFilterSubject && q.email === subFilterTeacher)
+    : [];
 
   if (loading) {
     return (
@@ -329,7 +377,6 @@ export default function StudentDashboard() {
               )}
             </motion.div>
           )}
-
           {activeTab === 'leaderboard' && (
             <motion.div
               key="leaderboard"
@@ -338,49 +385,206 @@ export default function StudentDashboard() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-8"
             >
-              <div>
-                <h1 className="text-3xl font-heading font-black mb-2">Global Leaderboard</h1>
-                <p className="text-text-muted text-sm">Check how you stack up against top students globally.</p>
+              {/* Leaderboard View Toggler */}
+              <div className="flex justify-between items-center border-b border-white/5 pb-4">
+                <div>
+                  <h1 className="text-3xl font-heading font-black">Performance Standings</h1>
+                  <p className="text-text-muted text-sm mt-1">Check how you stack up against top students.</p>
+                </div>
+                <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => {
+                      setLeaderboardView('global');
+                      setSelectedQuizId(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      leaderboardView === 'global'
+                        ? 'bg-accent-teal text-white shadow-md'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    Global
+                  </button>
+                  <button
+                    onClick={() => setLeaderboardView('quiz')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      leaderboardView === 'quiz'
+                        ? 'bg-accent-teal text-white shadow-md'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    By Quiz
+                  </button>
+                </div>
               </div>
 
-              {data?.rankings?.length === 0 ? (
-                <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted">
-                  Leaderboard is currently empty.
-                </div>
+              {leaderboardView === 'global' ? (
+                /* Global Leaderboard */
+                <>
+                  {data?.rankings?.length === 0 ? (
+                    <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted">
+                      Leaderboard is currently empty.
+                    </div>
+                  ) : (
+                    <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
+                              <th className="p-4 w-20">Rank</th>
+                              <th className="p-4">Name</th>
+                              <th className="p-4">College</th>
+                              <th className="p-4">Total Score</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5 text-sm">
+                            {data?.rankings?.map((rank, index) => (
+                              <tr 
+                                key={index} 
+                                className={`transition-colors ${rank.email === data.user.email ? 'bg-accent-teal/5 hover:bg-accent-teal/10' : 'hover:bg-white/2'}`}
+                              >
+                                <td className="p-4 font-black text-center text-lg">
+                                  {index === 0 ? '🏆' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                                </td>
+                                <td className="p-4 font-bold flex items-center gap-2">
+                                  {rank.name}
+                                  {rank.email === data.user.email && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-teal text-white font-black uppercase">You</span>
+                                  )}
+                                </td>
+                                <td className="p-4 text-text-muted">{rank.college}</td>
+                                <td className="p-4 text-accent-teal font-extrabold text-base">{rank.score}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
-                          <th className="p-4 w-20">Rank</th>
-                          <th className="p-4">Name</th>
-                          <th className="p-4">College</th>
-                          <th className="p-4">Total Score</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5 text-sm">
-                        {data?.rankings?.map((rank, index) => (
-                          <tr 
-                            key={index} 
-                            className={`transition-colors ${rank.email === data.user.email ? 'bg-accent-teal/5 hover:bg-accent-teal/10' : 'hover:bg-white/2'}`}
-                          >
-                            <td className="p-4 font-black text-center text-lg">
-                              {index === 0 ? '🏆' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                            </td>
-                            <td className="p-4 font-bold flex items-center gap-2">
-                              {rank.name}
-                              {rank.email === data.user.email && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-teal text-white font-black uppercase">You</span>
-                              )}
-                            </td>
-                            <td className="p-4 text-text-muted">{rank.college}</td>
-                            <td className="p-4 text-accent-teal font-extrabold text-base">{rank.score}</td>
-                          </tr>
+                /* Quiz specific leaderboard */
+                <div className="space-y-6">
+                  {/* Select Filters */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-white/3 border border-white/5 p-4 rounded-2xl">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Subject</label>
+                      <select
+                        value={subFilterSubject}
+                        onChange={(e) => {
+                          setSubFilterSubject(e.target.value);
+                          setSubFilterTeacher('');
+                          setSubFilterQuiz('');
+                          setSelectedQuizId(null);
+                        }}
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all text-white cursor-pointer"
+                      >
+                        <option value="">Select Subject</option>
+                        {uniqueSubjects.map(sub => (
+                          <option key={sub} value={sub}>{sub}</option>
                         ))}
-                      </tbody>
-                    </table>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Teacher</label>
+                      <select
+                        value={subFilterTeacher}
+                        disabled={!subFilterSubject}
+                        onChange={(e) => {
+                          setSubFilterTeacher(e.target.value);
+                          setSubFilterQuiz('');
+                          setSelectedQuizId(null);
+                        }}
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all text-white disabled:opacity-50 cursor-pointer"
+                      >
+                        <option value="">Select Teacher</option>
+                        {filteredTeachers.map(tch => {
+                          const name = tch.split('@')[0].replace(/^\w/, c => c.toUpperCase());
+                          return <option key={tch} value={tch}>{name} ({tch})</option>;
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Quiz</label>
+                      <select
+                        value={subFilterQuiz}
+                        disabled={!subFilterTeacher}
+                        onChange={(e) => {
+                          const qid = e.target.value;
+                          setSubFilterQuiz(qid);
+                          if (qid) {
+                            setSelectedQuizId(qid);
+                            fetchQuizLeaderboard(qid);
+                          } else {
+                            setSelectedQuizId(null);
+                          }
+                        }}
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all text-white disabled:opacity-50 cursor-pointer"
+                      >
+                        <option value="">Select Quiz</option>
+                        {filteredQuizzes.map(qz => (
+                          <option key={qz.eid} value={qz.eid}>{qz.title}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
+                  {selectedQuizId ? (
+                    loadingLeaderboard ? (
+                      <div className="py-20 flex flex-col items-center justify-center gap-4">
+                        <div className="w-8 h-8 border-t-2 border-accent-teal rounded-full animate-spin"></div>
+                        <p className="text-xs text-text-muted">Loading Leaderboard...</p>
+                      </div>
+                    ) : quizLeaderboard.length === 0 ? (
+                      <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                        No student attempts registered for this exam yet.
+                      </div>
+                    ) : (
+                      <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
+                                <th className="p-4 w-20 text-center">Rank</th>
+                                <th className="p-4">Student</th>
+                                <th className="p-4">College</th>
+                                <th className="p-4 text-center">Score</th>
+                                <th className="p-4">Attempt Date</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 text-sm">
+                              {quizLeaderboard.map((row) => (
+                                <tr 
+                                  key={row.email} 
+                                  className={`transition-colors ${row.email === data.user.email ? 'bg-accent-teal/5 hover:bg-accent-teal/10' : 'hover:bg-white/2'}`}
+                                >
+                                  <td className="p-4 font-black text-center text-accent-teal text-base">#{row.rank}</td>
+                                  <td className="p-4 font-bold flex items-center gap-2">
+                                    <div>
+                                      <div className="text-white">{row.name}</div>
+                                      <div className="text-[10px] text-text-subtle">{row.email}</div>
+                                    </div>
+                                    {row.email === data.user.email && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-teal text-white font-black uppercase">You</span>
+                                    )}
+                                  </td>
+                                  <td className="p-4 text-text-muted">{row.college}</td>
+                                  <td className="p-4 text-center text-accent-teal font-extrabold text-base">{row.score}</td>
+                                  <td className="p-4 text-text-muted text-xs">{new Date(row.date).toLocaleDateString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                      Please select a Subject, Teacher, and Quiz from the dropdowns above.
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

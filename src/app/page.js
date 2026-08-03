@@ -6,7 +6,7 @@ import {
   BookOpen, Sparkles, Shield, BarChart3, ArrowRight, X, 
   User, Lock, Mail, Phone, Award, LogOut, CheckCircle, Menu,
   GraduationCap, Clock, FileCheck, Users, Zap, Target, 
-  ChevronDown, ExternalLink, Brain, Timer, ListChecks
+  ChevronDown, ExternalLink, Brain, Timer, ListChecks, Eye, EyeOff
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -100,6 +100,9 @@ export default function Home() {
 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [signupForm, setSignupForm] = useState({
     name: '', gender: 'M', college: '', email: '', mob: '', password: '', cpassword: ''
@@ -700,10 +703,18 @@ export default function Home() {
                     <div className="relative">
                       <Lock className="absolute left-4 top-3.5 w-4 h-4 text-text-subtle" />
                       <input 
-                        type="password" placeholder="Password" required
+                        type={showLoginPassword ? "text" : "password"} placeholder="Password" required
                         value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-11 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute right-3.5 top-3.5 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                        aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                      >
+                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
 
                     {error && <div className="text-rose-400 text-xs text-center bg-rose-500/10 py-2 rounded-lg">{error}</div>}
@@ -743,8 +754,38 @@ export default function Home() {
                     <input type="text" placeholder="College / Institution" required value={signupForm.college} onChange={(e) => setSignupForm({...signupForm, college: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
                     <input type="email" placeholder="Email address" required value={signupForm.email} onChange={(e) => setSignupForm({...signupForm, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
                     <input type="tel" pattern="[0-9]{10}" maxLength="10" minLength="10" placeholder="10-digit Mobile Number" required value={signupForm.mob} onChange={(e) => setSignupForm({...signupForm, mob: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
-                    <input type="password" placeholder="Password" required minLength={5} value={signupForm.password} onChange={(e) => setSignupForm({...signupForm, password: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
-                    <input type="password" placeholder="Confirm Password" required value={signupForm.cpassword} onChange={(e) => setSignupForm({...signupForm, cpassword: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" />
+                    <div className="relative">
+                      <input 
+                        type={showSignupPassword ? "text" : "password"} 
+                        placeholder="Password" required minLength={5} 
+                        value={signupForm.password} onChange={(e) => setSignupForm({...signupForm, password: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupPassword(!showSignupPassword)}
+                        className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                        aria-label={showSignupPassword ? "Hide password" : "Show password"}
+                      >
+                        {showSignupPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        placeholder="Confirm Password" required 
+                        value={signupForm.cpassword} onChange={(e) => setSignupForm({...signupForm, cpassword: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-11 text-sm focus:outline-none focus:border-accent-teal/50 transition-all placeholder:text-text-subtle" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3.5 top-3 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
 
                     {error && <div className="text-rose-400 text-xs text-center bg-rose-500/10 py-2 rounded-lg">{error}</div>}
                     {success && <div className="text-emerald-400 text-xs text-center bg-emerald-500/10 py-2 rounded-lg flex items-center justify-center gap-1"><CheckCircle className="w-3.5 h-3.5" />{success}</div>}

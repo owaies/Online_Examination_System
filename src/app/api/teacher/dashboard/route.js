@@ -27,10 +27,11 @@ export async function GET() {
       ORDER BY r.score DESC
     `;
 
-    // 4. Get quizzes created by anyone (or specifically teachers)
+    // 4. Get quizzes created by this teacher
     const quizzes = await sql`
       SELECT eid, title, total, sahi, wrong, time, tag, date, email
       FROM "quiz"
+      WHERE email = ${session.email}
       ORDER BY date DESC
     `;
 
@@ -132,6 +133,15 @@ export async function DELETE(req) {
     }
 
     if (type === 'quiz') {
+      // Verify ownership of the quiz
+      const quizCheck = await sql`SELECT email FROM "quiz" WHERE eid = ${id}`;
+      if (quizCheck.length === 0) {
+        return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+      }
+      if (quizCheck[0].email !== session.email) {
+        return NextResponse.json({ error: 'Forbidden: You do not own this quiz' }, { status: 403 });
+      }
+
       // Use transaction to clean up quiz
       await sql.begin(async sql => {
         // Find all question IDs for this quiz

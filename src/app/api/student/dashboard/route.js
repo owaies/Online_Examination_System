@@ -14,7 +14,7 @@ export async function GET() {
     // 1. Get all available quizzes
     // We want to list quizzes that this student hasn't taken yet, or just list all
     const quizzes = await sql`
-      SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date,
+      SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date, q.email,
              (SELECT COUNT(*) FROM "history" h WHERE h.eid = q.eid AND h.email = ${email}) as attempted
       FROM "quiz" q
       ORDER BY q.date DESC

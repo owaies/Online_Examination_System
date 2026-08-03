@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, UserPlus, Trash2, LogOut, ShieldAlert, Mail, Lock,
-  GraduationCap, CheckCircle, HelpCircle, Sparkles
+  GraduationCap, CheckCircle, HelpCircle, Sparkles, Eye, EyeOff
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   // New teacher form state
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [addSuccess, setAddSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -235,13 +236,21 @@ export default function AdminDashboard() {
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-text-subtle" />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter password"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-11 pr-11 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all placeholder:text-text-subtle"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-2.5 text-text-subtle hover:text-white transition-colors cursor-pointer"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 

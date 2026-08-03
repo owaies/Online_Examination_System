@@ -65,7 +65,7 @@ export async function POST(req, { params }) {
 
     // Fetch quiz details
     const quizResult = await sql`
-      SELECT total, sahi, wrong FROM "quiz" WHERE eid = ${eid}
+      SELECT total, sahi, wrong, title, tag, email FROM "quiz" WHERE eid = ${eid}
     `;
     if (quizResult.length === 0) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
@@ -106,48 +106,89 @@ export async function POST(req, { params }) {
 
     // Check if history already exists
     const existingHistory = await sql`
-      SELECT email FROM "history" WHERE email = ${email} AND eid = ${eid}
+      SELECT email, score FROM "history" WHERE email = ${email} AND eid = ${eid}
     `;
 
+    let isBestAttempt = false;
+
     if (existingHistory.length > 0) {
-      await sql`
-        UPDATE "history" 
-        SET score = ${score}, sahi = ${sahiCount}, wrong = ${wrongCount}, date = NOW()
-        WHERE email = ${email} AND eid = ${eid}
-      `;
+      const prevScore = existingHistory[0].score;
+      if (score > prevScore) {
+        isBestAttempt = true;
+        await sql`
+          UPDATE "history" 
+          SET score = ${score}, sahi = ${sahiCount}, wrong = ${wrongCount}, date = NOW()
+          WHERE email = ${email} AND eid = ${eid}
+        `;
+      }
     } else {
+      isBestAttempt = true;
       await sql`
         INSERT INTO "history" (email, eid, score, level, sahi, wrong, date)
         VALUES (${email}, ${eid}, ${score}, ${quiz.total}, ${sahiCount}, ${wrongCount}, NOW())
       `;
     }
 
-    // Recalculate global rank
-    const sumResult = await sql`
-      SELECT SUM(score) as total_score FROM "history" WHERE email = ${email}
-    `;
-    const totalScore = parseInt(sumResult[0]?.total_score || '0');
-
-    const existingRank = await sql`
-      SELECT email FROM "rank" WHERE email = ${email}
-    `;
-
-    if (existingRank.length > 0) {
-      await sql`
-        UPDATE "rank" SET score = ${totalScore}, time = NOW() WHERE email = ${email}
+    if (isBestAttempt) {
+      // Recalculate global rank
+      const sumResult = await sql`
+        SELECT SUM(score) as total_score FROM "history" WHERE email = ${email}
       `;
-    } else {
-      await sql`
-        INSERT INTO "rank" (email, score, time) VALUES (${email}, ${totalScore}, NOW())
+      const totalScore = parseInt(sumResult[0]?.total_score || '0');
+
+      const existingRank = await sql`
+        SELECT email FROM "rank" WHERE email = ${email}
       `;
+
+      if (existingRank.length > 0) {
+        await sql`
+          UPDATE "rank" SET score = ${totalScore}, time = NOW() WHERE email = ${email}
+        `;
+      } else {
+        await sql`
+          INSERT INTO "rank" (email, score, time) VALUES (${email}, ${totalScore}, NOW())
+        `;
+      }
     }
+
+    // Calculate student's dynamic rank on this quiz
+    const allAttempts = await sql`
+      SELECT email, score, date FROM "history" WHERE eid = ${eid} ORDER BY score DESC, date ASC
+    `;
+    
+    let rank = 1;
+    let rankIndex = 1;
+    let prevAttemptScore = null;
+    let prevAttemptDate = null;
+    
+    for (let i = 0; i < allAttempts.length; i++) {
+      const att = allAttempts[i];
+      if (prevAttemptScore !== null) {
+        if (att.score !== prevAttemptScore || new Date(att.date).getTime() !== new Date(prevAttemptDate).getTime()) {
+          rankIndex = i + 1;
+        }
+      }
+      if (att.email === email) {
+        rank = rankIndex;
+        break;
+      }
+      prevAttemptScore = att.score;
+      prevAttemptDate = att.date;
+    }
+
+    const teacherName = quiz.email ? quiz.email.split('@')[0].replace(/^\w/, c => c.toUpperCase()) : 'Teacher';
 
     return NextResponse.json({
       success: true,
       score,
       sahi: sahiCount,
       wrong: wrongCount,
-      total: quiz.total
+      total: quiz.total,
+      title: quiz.title,
+      tag: quiz.tag,
+      teacherName,
+      rank,
+      totalStudents: allAttempts.length
     });
   } catch (error) {
     console.error('Quiz submission error:', error);
