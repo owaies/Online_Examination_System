@@ -123,7 +123,8 @@ export default function TeacherDashboard() {
     time: '5',
     sahi: '2',
     wrong: '1',
-    desc: ''
+    desc: '',
+    assignmentId: ''
   });
   const [wizardStep, setWizardStep] = useState(1); // 1: Info, 2: Questions
   const [questions, setQuestions] = useState([]);
@@ -312,11 +313,22 @@ export default function TeacherDashboard() {
     setLoading(true);
     
     try {
+      const selectedAssignment = data?.assignments?.find(a => a.id === quizDetails.assignmentId);
+      if (!selectedAssignment) {
+        showAlert('Please select a valid academic context (Class/Subject)', 'Missing Assignment');
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch('/api/teacher/dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...quizDetails,
+          academicYearId: selectedAssignment.academic_year_id,
+          academicUnitId: selectedAssignment.academic_unit_id,
+          sectionId: selectedAssignment.section_id || null,
+          subjectId: selectedAssignment.subject_id,
           questions
         })
       });
@@ -325,7 +337,7 @@ export default function TeacherDashboard() {
       
       await showAlert('Quiz created and published successfully!', 'Quiz Created');
       setQuestions([]);
-      setQuizDetails({ title: '', tag: 'general', time: '5', sahi: '2', wrong: '1', desc: '' });
+      setQuizDetails({ title: '', tag: 'general', time: '5', sahi: '2', wrong: '1', desc: '', assignmentId: '' });
       setWizardStep(1);
       setActiveTab('quizzes');
       fetchDashboardData();
@@ -743,6 +755,22 @@ export default function TeacherDashboard() {
 
               {wizardStep === 1 ? (
                 <div className="bg-zinc-950 border border-white/10 rounded-3xl p-8 space-y-6 shadow-xl">
+                  <div className="space-y-2">
+                    <label className="text-xs uppercase tracking-wider font-bold text-text-muted">Academic Context (Class & Subject) *</label>
+                    <select
+                      required
+                      value={quizDetails.assignmentId}
+                      onChange={(e) => setQuizDetails({...quizDetails, assignmentId: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all text-white"
+                    >
+                      <option value="">Select Class & Subject</option>
+                      {data?.assignments?.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.year_name} - {a.unit_name} {a.section_name ? `(${a.section_name})` : ''} - {a.subject_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-xs uppercase tracking-wider font-bold text-text-muted">Exam Title</label>
                     <input

@@ -14,14 +14,33 @@ export async function GET() {
 
     const instId = session.institution_id;
 
-    // 1. Get students belonging to this institution
-    const students = await sql`
-      SELECT name, gender, college, email, mob FROM "user" 
-      WHERE institution_id = ${instId}
-      ORDER BY name ASC
+    // Get assignments of this teacher
+    const assignments = await sql`
+      SELECT ta.id, ta.academic_year_id, ta.academic_unit_id, ta.section_id, ta.subject_id,
+             au.name as unit_name, s.name as subject_name, sec.name as section_name, y.name as year_name
+      FROM "teacher_assignment" ta
+      JOIN "academic_unit" au ON ta.academic_unit_id = au.id
+      LEFT JOIN "section" sec ON ta.section_id = sec.id
+      JOIN "subject" s ON ta.subject_id = s.id
+      JOIN "academic_year" y ON ta.academic_year_id = y.id
+      WHERE ta.teacher_id = ${session.email} AND ta.institution_id = ${instId}
     `;
 
-    // 2. Get feedbacks submitted by students belonging to this institution
+    // Filter students belonging to this teacher's assigned units/sections
+    const students = await sql`
+      SELECT DISTINCT u.name, u.gender, u.college, u.email, u.mob,
+             au.name as unit_name, sec.name as section_name
+      FROM "student_enrollment" se
+      JOIN "user" u ON se.student_id = u.email
+      JOIN "academic_unit" au ON se.academic_unit_id = au.id
+      LEFT JOIN "section" sec ON se.section_id = sec.id
+      JOIN "teacher_assignment" ta ON ta.academic_unit_id = se.academic_unit_id 
+        AND (ta.section_id = se.section_id OR ta.section_id IS NULL OR se.section_id IS NULL)
+      WHERE ta.teacher_id = ${session.email} AND ta.institution_id = ${instId}
+      ORDER BY u.name ASC
+    `;
+
+    // Get feedbacks submitted by students belonging to this institution
     const feedbacks = await sql`
       SELECT f.id, f.name, f.email, f.subject, f.feedback, f.date, f.time 
       FROM "feedback" f
@@ -30,7 +49,7 @@ export async function GET() {
       ORDER BY f.date DESC, f.time DESC
     `;
 
-    // 3. Get rankings of students belonging to this institution
+    // Get rankings of students belonging to this institution
     const rankings = await sql`
       SELECT r.email, r.score, u.name, u.college
       FROM "rank" r
@@ -39,15 +58,21 @@ export async function GET() {
       ORDER BY r.score DESC
     `;
 
-    // 4. Get quizzes created by this teacher
+    // Get quizzes created by this teacher, annotated with academic details
     const quizzes = await sql`
-      SELECT eid, title, total, sahi, wrong, time, tag, date, email
-      FROM "quiz"
-      WHERE email = ${session.email} AND institution_id = ${instId}
-      ORDER BY date DESC
+      SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date, q.email,
+             y.name as year_name, au.name as unit_name, sec.name as section_name, s.name as subject_name
+      FROM "quiz" q
+      LEFT JOIN "academic_year" y ON q.academic_year_id = y.id
+      LEFT JOIN "academic_unit" au ON q.academic_unit_id = au.id
+      LEFT JOIN "section" sec ON q.section_id = sec.id
+      LEFT JOIN "subject" s ON q.subject_id = s.id
+      WHERE q.email = ${session.email} AND q.institution_id = ${instId}
+      ORDER BY q.date DESC
     `;
 
     return NextResponse.json({
+      assignments,
       students,
       feedbacks,
       rankings,
@@ -69,23 +94,39 @@ export async function POST(req) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
     }
 
-    const { title, sahi, wrong, time, tag, desc, questions } = await req.json();
+    const { title, sahi, wrong, time, tag, desc, questions, academicYearId, academicUnitId, sectionId, subjectId } = await req.json();
     
-    if (!title || !sahi || !wrong || !time || !questions || questions.length === 0) {
+    if (!title || !sahi || !wrong || !time || !questions || questions.length === 0 || !academicYearId || !academicUnitId || !subjectId) {
       return NextResponse.json({ error: 'Missing required quiz fields' }, { status: 400 });
     }
 
-    const eid = Math.random().toString(36).substring(2, 15);
     const email = session.email;
     const instId = session.institution_id;
+
+    // Validate that the teacher is assigned to this exact academic unit/subject/section context
+    const assignmentCheck = await sql`
+      SELECT id FROM "teacher_assignment"
+      WHERE teacher_id = ${email}
+        AND institution_id = ${instId}
+        AND academic_year_id = ${academicYearId}
+        AND academic_unit_id = ${academicUnitId}
+        AND (section_id = ${sectionId || null} OR section_id IS NULL OR ${sectionId || null} IS NULL)
+        AND subject_id = ${subjectId}
+    `;
+
+    if (assignmentCheck.length === 0) {
+      return NextResponse.json({ error: 'Forbidden: You are not assigned to this class, section, or subject context.' }, { status: 403 });
+    }
+
+    const eid = Math.random().toString(36).substring(2, 15);
     const totalQuestions = questions.length;
 
     // Use transaction for atomic insertion of Quiz + Questions + Options + Answers
     await sql.begin(async sql => {
       // 1. Insert Quiz
       await sql`
-        INSERT INTO "quiz" (eid, title, sahi, wrong, total, time, intro, tag, date, email, institution_id)
-        VALUES (${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email}, ${instId})
+        INSERT INTO "quiz" (eid, title, sahi, wrong, total, time, intro, tag, date, email, institution_id, academic_year_id, academic_unit_id, section_id, subject_id)
+        VALUES (${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email}, ${instId}, ${academicYearId}, ${academicUnitId}, ${sectionId || null}, ${subjectId})
       `;
 
       // 2. Insert Questions, Options, and Correct Answers
@@ -96,8 +137,8 @@ export async function POST(req) {
 
         // Insert Question
         await sql`
-          INSERT INTO "questions" (eid, qid, qns, choice, sn)
-          VALUES (${eid}, ${qid}, ${q.qns}, 4, ${sn})
+          INSERT INTO "questions" (eid, qid, qns, choice, sn, academic_year_id, academic_unit_id, subject_id)
+          VALUES (${eid}, ${qid}, ${q.qns}, 4, ${sn}, ${academicYearId}, ${academicUnitId}, ${subjectId})
         `;
 
         // Insert Options

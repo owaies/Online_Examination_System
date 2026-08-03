@@ -216,6 +216,15 @@ export default function StudentDashboard() {
             <p className="text-xs text-text-muted">Logged in as</p>
             <p className="text-sm font-bold truncate">{data?.user?.name}</p>
             <p className="text-xs text-text-muted truncate">{data?.user?.email}</p>
+            {data?.activeEnrollment && (
+              <div className="mt-3 p-2.5 rounded-lg bg-white/5 border border-white/10">
+                <p className="text-[9px] uppercase tracking-wider text-text-muted font-bold mb-1">Active Enrollment</p>
+                <p className="text-[11px] text-white font-semibold leading-tight">{data.activeEnrollment.year_name}</p>
+                <p className="text-[11px] text-accent-teal font-semibold leading-tight mt-0.5">
+                  {data.activeEnrollment.unit_name} {data.activeEnrollment.section_name ? `(${data.activeEnrollment.section_name})` : ''}
+                </p>
+              </div>
+            )}
           </div>
           <button 
             onClick={handleLogout}
@@ -297,7 +306,10 @@ export default function StudentDashboard() {
                             </span>
                           )}
                         </div>
-                        <h3 className="text-xl font-heading font-bold mb-2 truncate">{quiz.title}</h3>
+                        <h3 className="text-xl font-heading font-bold mb-1 truncate">{quiz.title}</h3>
+                        <p className="text-[10px] uppercase font-bold text-accent-teal tracking-wider mb-3 truncate">
+                          {quiz.subject_name} • {quiz.unit_name} {quiz.section_name ? `(${quiz.section_name})` : ''}
+                        </p>
                         
                         <div className="grid grid-cols-2 gap-4 text-xs text-text-muted mb-4">
                           <div className="flex items-center gap-1.5">

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, UserPlus, Trash2, LogOut, ShieldAlert, Mail, Lock,
   GraduationCap, CheckCircle, HelpCircle, Sparkles, Building, Globe, MapPin, Phone,
-  Plus, Search, ArrowRight, Eye, EyeOff, CheckSquare, Users, BookOpen
+  Plus, Search, ArrowRight, Eye, EyeOff, CheckSquare, Users, BookOpen, Calendar, GitBranch, ChevronRight
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -16,6 +16,37 @@ export default function AdminDashboard() {
   const [students, setStudents] = useState([]);
   const [institution, setInstitution] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Phase 2 state
+  const [academicYears, setAcademicYears] = useState([]);
+  const [activeYearId, setActiveYearId] = useState('');
+  const [academicUnits, setAcademicUnits] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [teacherAssignments, setTeacherAssignments] = useState([]);
+  const [studentEnrollments, setStudentEnrollments] = useState([]);
+  const [academicSubTab, setAcademicSubTab] = useState('years'); // 'years' | 'structure' | 'sections' | 'subjects' | 'teachers' | 'students' | 'wizard'
+
+  // Modals state for Academic Setup
+  const [showAddYearModal, setShowAddYearModal] = useState(false);
+  const [yearForm, setYearForm] = useState({ name: '', startDate: '', endDate: '', status: 'active' });
+  
+  const [showAddUnitModal, setShowAddUnitModal] = useState(false);
+  const [addUnitParentId, setAddUnitParentId] = useState(null);
+  const [addUnitType, setAddUnitType] = useState('CLASS');
+  const [addUnitName, setAddUnitName] = useState('');
+
+  const [showAddSectionModal, setShowAddSectionModal] = useState(false);
+  const [sectionForm, setSectionForm] = useState({ name: '', capacity: '', academicUnitId: '' });
+
+  const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
+  const [subjectFormFields, setSubjectFormFields] = useState({ id: '', name: '', code: '', description: '', academicUnitIds: [] });
+
+  const [showAssignTeacherModal, setShowAssignTeacherModal] = useState(false);
+  const [assignForm, setAssignForm] = useState({ teacherId: '', academicUnitId: '', sectionId: '', subjectId: '' });
+
+  const [showEnrollStudentsModal, setShowEnrollStudentsModal] = useState(false);
+  const [enrollForm, setEnrollForm] = useState({ academicUnitId: '', sectionId: '', selectedStudentIds: [] });
 
   // Forms state
   const [newEmail, setNewEmail] = useState('');
@@ -120,9 +151,406 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchAcademicYears = async () => {
+    try {
+      const res = await fetch('/api/admin/academic-years');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAcademicYears(data.years);
+          const active = data.years.find(y => y.status === 'active');
+          if (active) {
+            setActiveYearId(active.id);
+          } else if (data.years.length > 0) {
+            setActiveYearId(data.years[0].id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching years:', err);
+    }
+  };
+
+  const fetchAcademicDetails = async (yearId) => {
+    if (!yearId) return;
+    try {
+      const resUnits = await fetch(`/api/admin/academic-units?academicYearId=${yearId}`);
+      if (resUnits.ok) {
+        const du = await resUnits.json();
+        if (du.success) setAcademicUnits(du.units);
+      }
+
+      const resSec = await fetch(`/api/admin/sections?academicYearId=${yearId}`);
+      if (resSec.ok) {
+        const ds = await resSec.json();
+        if (ds.success) setSections(ds.sections);
+      }
+
+      const resSubs = await fetch(`/api/admin/subjects?academicYearId=${yearId}`);
+      if (resSubs.ok) {
+        const ds = await resSubs.json();
+        if (ds.success) setSubjects(ds.subjects);
+      }
+
+      const resAssigns = await fetch(`/api/admin/teacher-assignments?academicYearId=${yearId}`);
+      if (resAssigns.ok) {
+        const da = await resAssigns.json();
+        if (da.success) setTeacherAssignments(da.assignments);
+      }
+
+      const resEnroll = await fetch(`/api/admin/student-enrollments?academicYearId=${yearId}`);
+      if (resEnroll.ok) {
+        const de = await resEnroll.json();
+        if (de.success) setStudentEnrollments(de.enrollments);
+      }
+    } catch (err) {
+      console.error('Error fetching academic details:', err);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
+    fetchAcademicYears();
   }, []);
+
+  useEffect(() => {
+    if (activeYearId) {
+      fetchAcademicDetails(activeYearId);
+    } else {
+      setAcademicUnits([]);
+      setSections([]);
+      setSubjects([]);
+      setTeacherAssignments([]);
+      setStudentEnrollments([]);
+    }
+  }, [activeYearId]);
+
+  const handleCreateYear = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/academic-years', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(yearForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create academic year');
+      
+      showAlert('Academic Year created successfully!', 'Success');
+      setShowAddYearModal(false);
+      setYearForm({ name: '', startDate: '', endDate: '', status: 'active' });
+      fetchAcademicYears();
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleToggleYearStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'active' ? 'archived' : 'active';
+    try {
+      const targetYear = academicYears.find(y => y.id === id);
+      if (!targetYear) return;
+      const res = await fetch('/api/admin/academic-years', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          name: targetYear.name,
+          startDate: targetYear.start_date,
+          endDate: targetYear.end_date,
+          status: newStatus
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update academic year');
+      
+      showAlert(`Academic Year status updated to ${newStatus}!`, 'Success');
+      fetchAcademicYears();
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleCreateUnit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/academic-units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: addUnitName,
+          type: addUnitType,
+          academicYearId: activeYearId,
+          parentId: addUnitParentId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create academic unit');
+
+      showAlert('Academic unit created successfully!', 'Success');
+      setShowAddUnitModal(false);
+      setAddUnitName('');
+      setAddUnitParentId(null);
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleDeleteUnit = async (id) => {
+    const confirmDelete = await showConfirm('Are you sure you want to delete this academic unit? This action cannot be undone.');
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`/api/admin/academic-units?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete academic unit');
+
+      showAlert('Academic unit deleted successfully.', 'Success');
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleCreateSection = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...sectionForm,
+          academicYearId: activeYearId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create section');
+
+      showAlert('Section created successfully!', 'Success');
+      setShowAddSectionModal(false);
+      setSectionForm({ name: '', capacity: '', academicUnitId: '' });
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleDeleteSection = async (id) => {
+    const confirmDelete = await showConfirm('Are you sure you want to delete this section?');
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`/api/admin/sections?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete section');
+
+      showAlert('Section deleted successfully.', 'Success');
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleCreateSubject = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/subjects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: subjectFormFields.name,
+          code: subjectFormFields.code,
+          description: subjectFormFields.description,
+          academicYearId: activeYearId,
+          academicUnitIds: subjectFormFields.academicUnitIds
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create subject');
+
+      showAlert('Subject created successfully!', 'Success');
+      setShowAddSubjectModal(false);
+      setSubjectFormFields({ id: '', name: '', code: '', description: '', academicUnitIds: [] });
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleUpdateSubject = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/subjects', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: subjectFormFields.id,
+          name: subjectFormFields.name,
+          code: subjectFormFields.code,
+          description: subjectFormFields.description,
+          academicUnitIds: subjectFormFields.academicUnitIds
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update subject');
+
+      showAlert('Subject updated successfully!', 'Success');
+      setShowAddSubjectModal(false);
+      setSubjectFormFields({ id: '', name: '', code: '', description: '', academicUnitIds: [] });
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleDeleteSubject = async (id) => {
+    const confirmDelete = await showConfirm('Are you sure you want to delete this subject?');
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`/api/admin/subjects?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete subject');
+
+      showAlert('Subject deleted successfully.', 'Success');
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleCreateTeacherAssignment = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/teacher-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...assignForm,
+          academicYearId: activeYearId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create teacher assignment');
+
+      showAlert('Teacher assigned successfully!', 'Success');
+      setShowAssignTeacherModal(false);
+      setAssignForm({ teacherId: '', academicUnitId: '', sectionId: '', subjectId: '' });
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleDeleteTeacherAssignment = async (id) => {
+    const confirmDelete = await showConfirm('Are you sure you want to remove this teacher assignment?');
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`/api/admin/teacher-assignments?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to remove assignment');
+
+      showAlert('Teacher assignment removed successfully.', 'Success');
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleEnrollStudents = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/student-enrollments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          academicYearId: activeYearId,
+          academicUnitId: enrollForm.academicUnitId,
+          sectionId: enrollForm.sectionId,
+          studentIds: enrollForm.selectedStudentIds
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to enroll students');
+
+      showAlert('Students enrolled successfully!', 'Success');
+      setShowEnrollStudentsModal(false);
+      setEnrollForm({ academicUnitId: '', sectionId: '', selectedStudentIds: [] });
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const handleApplyPreset = async (presetType) => {
+    try {
+      let presetUnits = [];
+      if (presetType === 'school') {
+        const classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        presetUnits = classes.map((c, idx) => ({
+          tempId: `class-${c}`,
+          name: `Class ${c}`,
+          type: 'CLASS',
+          displayOrder: idx + 1,
+          parentTempId: null
+        }));
+      } else if (presetType === 'puc') {
+        presetUnits = [
+          { tempId: '1puc', name: '1st PUC', type: 'YEAR', displayOrder: 1, parentTempId: null },
+          { tempId: '2puc', name: '2nd PUC', type: 'YEAR', displayOrder: 2, parentTempId: null }
+        ];
+      } else if (presetType === 'university') {
+        presetUnits = [
+          { tempId: 'cse', name: 'Computer Science & Engineering', type: 'PROGRAM', displayOrder: 1, parentTempId: null },
+          { tempId: 'aiml', name: 'Artificial Intelligence & Machine Learning', type: 'PROGRAM', displayOrder: 2, parentTempId: null }
+        ];
+        for (let i = 1; i <= 8; i++) {
+          presetUnits.push({
+            tempId: `cse-sem-${i}`,
+            name: `Semester ${i}`,
+            type: 'SEMESTER',
+            displayOrder: i,
+            parentTempId: 'cse'
+          });
+          presetUnits.push({
+            tempId: `aiml-sem-${i}`,
+            name: `Semester ${i}`,
+            type: 'SEMESTER',
+            displayOrder: i,
+            parentTempId: 'aiml'
+          });
+        }
+      }
+
+      const res = await fetch('/api/admin/academic-units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          academicYearId: activeYearId,
+          presetUnits
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to apply preset structure');
+
+      showAlert('Academic preset applied successfully!', 'Success');
+      fetchAcademicDetails(activeYearId);
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    }
+  };
+
+  const getSuggestedChildType = (parentType) => {
+    switch (parentType) {
+      case 'PROGRAM': return 'SEMESTER';
+      case 'CLASS': return 'OTHER';
+      case 'SEMESTER': return 'BATCH';
+      case 'DEPARTMENT': return 'PROGRAM';
+      default: return 'OTHER';
+    }
+  };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -235,6 +663,418 @@ export default function AdminDashboard() {
     }
   };
 
+  const renderSetupWizard = () => {
+    return (
+      <div className="bg-zinc-950 border border-white/10 rounded-3xl p-8 space-y-6 shadow-xl">
+        <div className="text-center max-w-xl mx-auto space-y-2">
+          <Sparkles className="w-8 h-8 text-accent-teal mx-auto animate-pulse" />
+          <h2 className="text-xl font-bold font-heading">Set Up Academic Structure</h2>
+          <p className="text-xs text-text-muted">
+            Configure how your institution is organized. Choose a pre-defined template to get started instantly, or construct a custom hierarchy.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+          {/* Preset 1: School */}
+          <div className="bg-white/3 border border-white/5 hover:border-accent-teal/50 rounded-2xl p-6 flex flex-col justify-between transition-all group">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center">
+                <GraduationCap className="w-5 h-5 text-accent-teal" />
+              </div>
+              <h3 className="font-bold text-sm text-white">School (K-10)</h3>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Ideal for primary and secondary schools. Sets up classes from Class 1 to Class 10 automatically.
+              </p>
+            </div>
+            <button
+              onClick={() => handleApplyPreset('school')}
+              className="mt-6 w-full py-2 bg-accent-teal hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Apply School Preset
+            </button>
+          </div>
+
+          {/* Preset 2: PU College */}
+          <div className="bg-white/3 border border-white/5 hover:border-accent-teal/50 rounded-2xl p-6 flex flex-col justify-between transition-all group">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center">
+                <Award className="w-5 h-5 text-accent-teal" />
+              </div>
+              <h3 className="font-bold text-sm text-white">PU College (11th & 12th)</h3>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Pre-configures 1st PUC and 2nd PUC classes. Customize your streams later (e.g., PCMB, Commerce).
+              </p>
+            </div>
+            <button
+              onClick={() => handleApplyPreset('puc')}
+              className="mt-6 w-full py-2 bg-accent-teal hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Apply PU College Preset
+            </button>
+          </div>
+
+          {/* Preset 3: University */}
+          <div className="bg-white/3 border border-white/5 hover:border-accent-teal/50 rounded-2xl p-6 flex flex-col justify-between transition-all group">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center">
+                <Building className="w-5 h-5 text-accent-teal" />
+              </div>
+              <h3 className="font-bold text-sm text-white">College / University</h3>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Configures dynamic Program majors (e.g., CSE, AIML) and dynamically maps Semesters 1 to 8.
+              </p>
+            </div>
+            <button
+              onClick={() => handleApplyPreset('university')}
+              className="mt-6 w-full py-2 bg-accent-teal hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Apply University Preset
+            </button>
+          </div>
+        </div>
+
+        <div className="text-center pt-4">
+          <button
+            onClick={() => {
+              // Custom preset
+              showAlert('Custom mode selected. You can now build your own hierarchy tree!', 'Info');
+              // Insert a placeholder root unit
+              handleCreateUnitPlaceholder();
+            }}
+            className="text-xs text-text-muted hover:text-white transition-colors underline cursor-pointer"
+          >
+            Or start with a blank custom structure
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const handleCreateUnitPlaceholder = async () => {
+    try {
+      const res = await fetch('/api/admin/academic-units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Main Campus',
+          type: 'OTHER',
+          academicYearId: activeYearId
+        })
+      });
+      if (res.ok) {
+        fetchAcademicDetails(activeYearId);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const renderAcademicYearsTab = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h3 className="font-bold text-base text-white">Academic Years</h3>
+          <button
+            onClick={() => {
+              setYearForm({ name: '', startDate: '', endDate: '', status: 'active' });
+              setShowAddYearModal(true);
+            }}
+            className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10"
+          >
+            <Plus className="w-4 h-4" /> Add Academic Year
+          </button>
+        </div>
+
+        <div className="bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-lg">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/2 text-text-muted uppercase font-bold tracking-wider">
+                <th className="p-4">Year Name</th>
+                <th className="p-4">Start Date</th>
+                <th className="p-4">End Date</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {academicYears.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-text-muted font-semibold">
+                    No academic years found. Create one to begin.
+                  </td>
+                </tr>
+              ) : (
+                academicYears.map(year => (
+                  <tr key={year.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                    <td className="p-4 font-bold text-white">{year.name}</td>
+                    <td className="p-4 text-text-muted">{new Date(year.start_date).toLocaleDateString()}</td>
+                    <td className="p-4 text-text-muted">{new Date(year.end_date).toLocaleDateString()}</td>
+                    <td className="p-4">
+                      <span className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-wider ${
+                        year.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/10 text-text-muted border border-white/10'
+                      }`}>
+                        {year.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => handleToggleYearStatus(year.id, year.status)}
+                        className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                          year.status === 'active' 
+                            ? 'border-white/10 text-text-muted hover:text-white hover:bg-white/5' 
+                            : 'border-accent-teal/20 text-accent-teal hover:bg-accent-teal/10'
+                        }`}
+                      >
+                        {year.status === 'active' ? 'Archive' : 'Activate'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderUnitTree = (parentId = null, depth = 0) => {
+    const levelUnits = academicUnits.filter(u => u.parent_id === parentId);
+    if (levelUnits.length === 0) return null;
+    return (
+      <div className="space-y-3 mt-3">
+        {levelUnits.map(unit => (
+          <div key={unit.id} className="border border-white/10 bg-white/2 rounded-2xl p-4 shadow-sm" style={{ marginLeft: depth > 0 ? '1.5rem' : '0' }}>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-accent-teal" />
+                <div>
+                  <span className="text-xs font-bold text-white">{unit.name}</span>
+                  <span className="text-[9px] bg-white/10 px-2 py-0.5 rounded-full text-text-muted ml-2 font-mono uppercase tracking-wider">{unit.type}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setAddUnitParentId(unit.id);
+                    setAddUnitType(getSuggestedChildType(unit.type));
+                    setAddUnitName('');
+                    setShowAddUnitModal(true);
+                  }}
+                  className="text-[10px] text-accent-teal hover:underline font-bold cursor-pointer"
+                >
+                  + Add Sub-Unit
+                </button>
+                <span className="text-white/10">|</span>
+                <button
+                  onClick={() => handleDeleteUnit(unit.id)}
+                  className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+            {/* Render nested children */}
+            {renderUnitTree(unit.id, depth + 1)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderAcademicStructureTab = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-bold text-base text-white">Academic Units & Hierarchy</h3>
+            <p className="text-[11px] text-text-muted">Manage classes, departments, programs, and semesters.</p>
+          </div>
+          <button
+            onClick={() => {
+              setAddUnitParentId(null);
+              setAddUnitType('CLASS');
+              setAddUnitName('');
+              setShowAddUnitModal(true);
+            }}
+            className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10"
+          >
+            <Plus className="w-4 h-4" /> Add Root Unit
+          </button>
+        </div>
+
+        {academicUnits.length === 0 ? (
+          renderSetupWizard()
+        ) : (
+          <div className="bg-zinc-950 border border-white/10 rounded-3xl p-6 shadow-lg">
+            {renderUnitTree(null, 0)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderSectionsTab = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-bold text-base text-white">Sections</h3>
+            <p className="text-[11px] text-text-muted">Define sections (A, B, C) for your classes or batches.</p>
+          </div>
+          <button disabled={academicUnits.length === 0} onClick={() => { setSectionForm({ name: '', capacity: '', academicUnitId: academicUnits[0]?.id || '' }); setShowAddSectionModal(true); }} className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10 disabled:opacity-50">
+            <Plus className="w-4 h-4" /> Add Section
+          </button>
+        </div>
+        <div className="bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-lg">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead><tr className="border-b border-white/10 bg-white/2 text-text-muted uppercase font-bold tracking-wider"><th className="p-4">Academic Unit</th><th className="p-4">Section Name</th><th className="p-4">Capacity</th><th className="p-4 text-right">Actions</th></tr></thead>
+            <tbody>
+              {sections.length === 0 ? (
+                <tr><td colSpan={4} className="p-8 text-center text-text-muted font-semibold">{academicUnits.length === 0 ? 'Set up your academic structure first.' : 'No sections created yet.'}</td></tr>
+              ) : sections.map(sec => {
+                const parentUnit = academicUnits.find(u => u.id === sec.academic_unit_id);
+                return (
+                  <tr key={sec.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                    <td className="p-4 font-bold text-white">{parentUnit?.name || 'Unknown'}</td>
+                    <td className="p-4 text-text-muted">{sec.name}</td>
+                    <td className="p-4 text-text-muted">{sec.capacity || '—'}</td>
+                    <td className="p-4 text-right"><button onClick={() => handleDeleteSection(sec.id)} className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer">Delete</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSubjectsTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-base text-white">Subjects</h3>
+        <button onClick={() => { setSubjectFormFields({ id: '', name: '', code: '', description: '', academicUnitIds: [] }); setShowAddSubjectModal(true); }} className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10">
+          <Plus className="w-4 h-4" /> Add Subject
+        </button>
+      </div>
+      <div className="bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-lg">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead><tr className="border-b border-white/10 bg-white/2 text-text-muted uppercase font-bold tracking-wider"><th className="p-4">Subject</th><th className="p-4">Code</th><th className="p-4">Mapped Units</th><th className="p-4 text-right">Actions</th></tr></thead>
+          <tbody>
+            {subjects.length === 0 ? (
+              <tr><td colSpan={4} className="p-8 text-center text-text-muted font-semibold">No subjects yet.</td></tr>
+            ) : subjects.map(sub => (
+              <tr key={sub.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                <td className="p-4 font-bold text-white">{sub.name}</td>
+                <td className="p-4 text-text-muted font-mono">{sub.code || '—'}</td>
+                <td className="p-4 text-text-muted text-[10px]">{(sub.mapped_units || []).filter(Boolean).map(uid => academicUnits.find(u => u.id === uid)?.name).filter(Boolean).join(', ') || '—'}</td>
+                <td className="p-4 text-right space-x-2">
+                  <button onClick={() => { setSubjectFormFields({ id: sub.id, name: sub.name, code: sub.code || '', description: sub.description || '', academicUnitIds: (sub.mapped_units || []).filter(Boolean) }); setShowAddSubjectModal(true); }} className="text-[10px] text-sky-400 hover:underline font-bold cursor-pointer">Edit</button>
+                  <button onClick={() => handleDeleteSubject(sub.id)} className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer">Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderTeacherAssignmentsTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-base text-white">Teacher Assignments</h3>
+        <button disabled={teachers.length === 0 || academicUnits.length === 0 || subjects.length === 0} onClick={() => { setAssignForm({ teacherId: teachers[0]?.email || '', academicUnitId: academicUnits[0]?.id || '', sectionId: '', subjectId: subjects[0]?.id || '' }); setShowAssignTeacherModal(true); }} className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10 disabled:opacity-50">
+          <Plus className="w-4 h-4" /> Assign Teacher
+        </button>
+      </div>
+      <div className="bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-lg">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead><tr className="border-b border-white/10 bg-white/2 text-text-muted uppercase font-bold tracking-wider"><th className="p-4">Teacher</th><th className="p-4">Unit</th><th className="p-4">Section</th><th className="p-4">Subject</th><th className="p-4 text-right">Actions</th></tr></thead>
+          <tbody>
+            {teacherAssignments.length === 0 ? (
+              <tr><td colSpan={5} className="p-8 text-center text-text-muted font-semibold">No teacher assignments yet.</td></tr>
+            ) : teacherAssignments.map(a => (
+              <tr key={a.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                <td className="p-4 font-bold text-white">{a.teacher_id}</td>
+                <td className="p-4 text-text-muted">{a.unit_name}</td>
+                <td className="p-4 text-text-muted">{a.section_name || '—'}</td>
+                <td className="p-4 text-text-muted">{a.subject_name}</td>
+                <td className="p-4 text-right"><button onClick={() => handleDeleteTeacherAssignment(a.id)} className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer">Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderStudentEnrollmentsTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-base text-white">Student Enrollments</h3>
+        <button disabled={students.length === 0 || academicUnits.length === 0} onClick={() => { setEnrollForm({ academicUnitId: academicUnits[0]?.id || '', sectionId: '', selectedStudentIds: [] }); setShowEnrollStudentsModal(true); }} className="px-4 py-2 bg-accent-teal hover:bg-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-accent-teal/10 disabled:opacity-50">
+          <Plus className="w-4 h-4" /> Enroll Students
+        </button>
+      </div>
+      <div className="bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-lg">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead><tr className="border-b border-white/10 bg-white/2 text-text-muted uppercase font-bold tracking-wider"><th className="p-4">Student</th><th className="p-4">Unit</th><th className="p-4">Section</th><th className="p-4">Status</th></tr></thead>
+          <tbody>
+            {studentEnrollments.length === 0 ? (
+              <tr><td colSpan={4} className="p-8 text-center text-text-muted font-semibold">No enrollments yet.</td></tr>
+            ) : studentEnrollments.map(e => (
+              <tr key={e.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                <td className="p-4 font-bold text-white">{e.student_name} <span className="text-text-muted font-normal text-[10px]">({e.student_id})</span></td>
+                <td className="p-4 text-text-muted">{e.unit_name}</td>
+                <td className="p-4 text-text-muted">{e.section_name || '—'}</td>
+                <td className="p-4"><span className="px-2.5 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{e.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAcademicTab = () => {
+    const subTabs = [
+      { id: 'years', label: 'Academic Years' },
+      { id: 'structure', label: 'Structure' },
+      { id: 'sections', label: 'Sections' },
+      { id: 'subjects', label: 'Subjects' },
+      { id: 'assign-teachers', label: 'Teacher Assignments' },
+      { id: 'enroll-students', label: 'Student Enrollments' },
+    ];
+    return (
+      <div className="space-y-6">
+        {academicYears.length > 0 && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Active Year:</span>
+            <select value={activeYearId} onChange={(e) => setActiveYearId(e.target.value)} className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+              {academicYears.map(y => <option key={y.id} value={y.id}>{y.name} ({y.status})</option>)}
+            </select>
+          </div>
+        )}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide border-b border-white/5">
+          {subTabs.map(st => (
+            <button key={st.id} onClick={() => setAcademicSubTab(st.id)} className={`px-4 py-2 text-[10px] uppercase font-bold tracking-wider rounded-t-xl whitespace-nowrap transition-all cursor-pointer ${academicSubTab === st.id ? 'text-white border-b-2 border-accent-teal' : 'text-text-muted hover:text-white'}`}>
+              {st.label}
+            </button>
+          ))}
+        </div>
+        {academicSubTab === 'years' && renderAcademicYearsTab()}
+        {academicSubTab === 'structure' && renderAcademicStructureTab()}
+        {academicSubTab === 'sections' && renderSectionsTab()}
+        {academicSubTab === 'subjects' && renderSubjectsTab()}
+        {academicSubTab === 'assign-teachers' && renderTeacherAssignmentsTab()}
+        {academicSubTab === 'enroll-students' && renderStudentEnrollmentsTab()}
+      </div>
+    );
+  };
+
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-background">
@@ -275,6 +1115,7 @@ export default function AdminDashboard() {
         <div className="flex border-b border-white/5 gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {[
             { id: 'overview', label: 'Overview', icon: Building },
+            { id: 'academic', label: 'Academic Setup', icon: BookOpen },
             { id: 'teachers', label: 'Teachers', icon: Users },
             { id: 'students', label: 'Students', icon: GraduationCap },
             { id: 'profile', label: 'Institution Profile', icon: Globe },
@@ -399,6 +1240,22 @@ export default function AdminDashboard() {
                   )}
                 </div>
               </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'academic' && (
+            <motion.div
+              key="academic"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <div>
+                <h1 className="text-3xl font-heading font-black mb-2">Academic Setup</h1>
+                <p className="text-text-muted text-sm">Configure academic years, class structure, sections, subjects, teacher assignments and student enrollments.</p>
+              </div>
+              {renderAcademicTab()}
             </motion.div>
           )}
 
@@ -813,6 +1670,242 @@ export default function AdminDashboard() {
       <footer className="border-t border-white/5 py-8 text-center text-text-muted text-[10px] tracking-widest mt-auto">
         <p>e-EXAMINER &copy; 2026. ALL RIGHTS RESERVED.</p>
       </footer>
+
+      {/* ========================= PHASE 2 MODALS ========================= */}
+
+      {/* Add Year Modal */}
+      <AnimatePresence>
+        {showAddYearModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl">
+              <h3 className="text-lg font-black text-white mb-6">Create Academic Year</h3>
+              <form onSubmit={handleCreateYear} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Name *</label>
+                  <input required value={yearForm.name} onChange={e => setYearForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. 2026-27" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Start Date *</label>
+                    <input type="date" required value={yearForm.startDate} onChange={e => setYearForm(p => ({ ...p, startDate: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">End Date *</label>
+                    <input type="date" required value={yearForm.endDate} onChange={e => setYearForm(p => ({ ...p, endDate: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Status</label>
+                  <select value={yearForm.status} onChange={e => setYearForm(p => ({ ...p, status: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="active">Active</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAddYearModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer">Create</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Unit Modal */}
+      <AnimatePresence>
+        {showAddUnitModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl">
+              <h3 className="text-lg font-black text-white mb-6">{addUnitParentId ? 'Add Sub-Unit' : 'Add Top-Level Unit'}</h3>
+              <form onSubmit={handleCreateUnit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Unit Type *</label>
+                  <select value={addUnitType} onChange={e => setAddUnitType(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    {['CLASS','GRADE','STANDARD','SEMESTER','YEAR','PROGRAM','STREAM','DEPARTMENT','BATCH','DIVISION','GROUP','TERM','MODULE','CUSTOM'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Name *</label>
+                  <input required value={addUnitName} onChange={e => setAddUnitName(e.target.value)} placeholder="e.g. Class 10, B.Tech CSE, Semester 1" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAddUnitModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer">Create</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Section Modal */}
+      <AnimatePresence>
+        {showAddSectionModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl">
+              <h3 className="text-lg font-black text-white mb-6">Add Section</h3>
+              <form onSubmit={handleCreateSection} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Academic Unit *</label>
+                  <select required value={sectionForm.academicUnitId} onChange={e => setSectionForm(p => ({ ...p, academicUnitId: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    {academicUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.unit_type})</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Section Name *</label>
+                  <input required value={sectionForm.name} onChange={e => setSectionForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. A, B, C" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Capacity</label>
+                  <input type="number" min="0" value={sectionForm.capacity} onChange={e => setSectionForm(p => ({ ...p, capacity: e.target.value }))} placeholder="e.g. 60" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAddSectionModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer">Create</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add/Edit Subject Modal */}
+      <AnimatePresence>
+        {showAddSubjectModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto">
+              <h3 className="text-lg font-black text-white mb-6">{subjectFormFields.id ? 'Edit Subject' : 'Add Subject'}</h3>
+              <form onSubmit={handleCreateSubject} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Subject Name *</label>
+                  <input required value={subjectFormFields.name} onChange={e => setSubjectFormFields(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Mathematics" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Subject Code</label>
+                  <input value={subjectFormFields.code} onChange={e => setSubjectFormFields(p => ({ ...p, code: e.target.value }))} placeholder="e.g. MATH101" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Description</label>
+                  <textarea value={subjectFormFields.description} onChange={e => setSubjectFormFields(p => ({ ...p, description: e.target.value }))} rows={2} placeholder="Optional description" className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50 resize-none" />
+                </div>
+                {academicUnits.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-text-muted uppercase font-bold">Map to Academic Units</label>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                      {academicUnits.map(u => (
+                        <label key={u.id} className="flex items-center gap-2 text-xs text-white cursor-pointer hover:bg-white/5 rounded-lg px-2 py-1.5 transition-colors">
+                          <input type="checkbox" checked={subjectFormFields.academicUnitIds.includes(u.id)} onChange={e => {
+                            if (e.target.checked) setSubjectFormFields(p => ({ ...p, academicUnitIds: [...p.academicUnitIds, u.id] }));
+                            else setSubjectFormFields(p => ({ ...p, academicUnitIds: p.academicUnitIds.filter(id => id !== u.id) }));
+                          }} className="accent-teal-500" />
+                          {u.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAddSubjectModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer">{subjectFormFields.id ? 'Update' : 'Create'}</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Assign Teacher Modal */}
+      <AnimatePresence>
+        {showAssignTeacherModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl">
+              <h3 className="text-lg font-black text-white mb-6">Assign Teacher</h3>
+              <form onSubmit={handleCreateTeacherAssignment} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Teacher *</label>
+                  <select required value={assignForm.teacherId} onChange={e => setAssignForm(p => ({ ...p, teacherId: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">Select Teacher</option>
+                    {teachers.map(t => <option key={t.email} value={t.email}>{t.email}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Academic Unit *</label>
+                  <select required value={assignForm.academicUnitId} onChange={e => setAssignForm(p => ({ ...p, academicUnitId: e.target.value, sectionId: '' }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">Select Unit</option>
+                    {academicUnits.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Section (optional)</label>
+                  <select value={assignForm.sectionId} onChange={e => setAssignForm(p => ({ ...p, sectionId: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">All Sections</option>
+                    {sections.filter(s => s.academic_unit_id === assignForm.academicUnitId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Subject *</label>
+                  <select required value={assignForm.subjectId} onChange={e => setAssignForm(p => ({ ...p, subjectId: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">Select Subject</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name} {s.code ? `(${s.code})` : ''}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowAssignTeacherModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer">Assign</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Enroll Students Modal */}
+      <AnimatePresence>
+        {showEnrollStudentsModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto">
+              <h3 className="text-lg font-black text-white mb-6">Enroll Students</h3>
+              <form onSubmit={handleEnrollStudents} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Academic Unit *</label>
+                  <select required value={enrollForm.academicUnitId} onChange={e => setEnrollForm(p => ({ ...p, academicUnitId: e.target.value, sectionId: '' }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">Select Unit</option>
+                    {academicUnits.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Section (optional)</label>
+                  <select value={enrollForm.sectionId} onChange={e => setEnrollForm(p => ({ ...p, sectionId: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-accent-teal/50">
+                    <option value="">No Section</option>
+                    {sections.filter(s => s.academic_unit_id === enrollForm.academicUnitId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-text-muted uppercase font-bold">Select Students *</label>
+                  <div className="max-h-48 overflow-y-auto bg-white/2 border border-white/5 rounded-xl p-2 space-y-1">
+                    {students.length === 0 ? (
+                      <p className="text-text-muted text-xs text-center py-4">No students in this institution yet.</p>
+                    ) : students.map(st => (
+                      <label key={st.email} className="flex items-center gap-2 text-xs text-white cursor-pointer hover:bg-white/5 rounded-lg px-2 py-1.5 transition-colors">
+                        <input type="checkbox" checked={enrollForm.selectedStudentIds.includes(st.email)} onChange={e => {
+                          if (e.target.checked) setEnrollForm(p => ({ ...p, selectedStudentIds: [...p.selectedStudentIds, st.email] }));
+                          else setEnrollForm(p => ({ ...p, selectedStudentIds: p.selectedStudentIds.filter(id => id !== st.email) }));
+                        }} className="accent-teal-500" />
+                        {st.name || st.email} <span className="text-text-muted text-[10px]">({st.email})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setShowEnrollStudentsModal(false)} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" disabled={enrollForm.selectedStudentIds.length === 0} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-teal-500 text-white text-sm font-bold shadow-lg shadow-accent-teal/20 transition-all cursor-pointer disabled:opacity-50">Enroll ({enrollForm.selectedStudentIds.length})</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Custom Dialog Modal */}
       <AnimatePresence>

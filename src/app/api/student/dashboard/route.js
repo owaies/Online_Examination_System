@@ -15,16 +15,40 @@ export async function GET() {
     const email = session.email;
     const instId = session.institution_id;
 
-    // 1. Get available quizzes belonging to this institution
-    const quizzes = await sql`
-      SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date, q.email,
-             (SELECT COUNT(*) FROM "history" h WHERE h.eid = q.eid AND h.email = ${email}) as attempted
-      FROM "quiz" q
-      WHERE q.institution_id = ${instId}
-      ORDER BY q.date DESC
+    // 1. Fetch active enrollment details
+    const enrollmentResult = await sql`
+      SELECT se.academic_year_id, se.academic_unit_id, se.section_id, 
+             y.name as year_name, au.name as unit_name, sec.name as section_name
+      FROM "student_enrollment" se
+      JOIN "academic_year" y ON se.academic_year_id = y.id
+      JOIN "academic_unit" au ON se.academic_unit_id = au.id
+      LEFT JOIN "section" sec ON se.section_id = sec.id
+      WHERE se.student_id = ${email} AND se.institution_id = ${instId} AND y.status = 'active'
+      LIMIT 1
     `;
+    const activeEnrollment = enrollmentResult[0] || null;
 
-    // 2. Get student history (since student belongs to institution, history automatically isolates by email)
+    // 2. Get quizzes matching the student's active enrollment
+    let quizzes = [];
+    if (activeEnrollment) {
+      quizzes = await sql`
+        SELECT q.eid, q.title, q.total, q.sahi, q.wrong, q.time, q.tag, q.date, q.email,
+               (SELECT COUNT(*) FROM "history" h WHERE h.eid = q.eid AND h.email = ${email}) as attempted,
+               y.name as year_name, au.name as unit_name, sec.name as section_name, s.name as subject_name
+        FROM "quiz" q
+        JOIN "academic_year" y ON q.academic_year_id = y.id
+        JOIN "academic_unit" au ON q.academic_unit_id = au.id
+        LEFT JOIN "section" sec ON q.section_id = sec.id
+        JOIN "subject" s ON q.subject_id = s.id
+        WHERE q.institution_id = ${instId}
+          AND q.academic_year_id = ${activeEnrollment.academic_year_id}
+          AND q.academic_unit_id = ${activeEnrollment.academic_unit_id}
+          AND (q.section_id = ${activeEnrollment.section_id || null} OR q.section_id IS NULL)
+        ORDER BY q.date DESC
+      `;
+    }
+
+    // 3. Get student history
     const history = await sql`
       SELECT h.eid, h.score, h.sahi, h.wrong, h.date, q.title, q.total, q.time
       FROM "history" h
@@ -33,7 +57,7 @@ export async function GET() {
       ORDER BY h.date DESC
     `;
 
-    // 3. Get global leaderboard / ranking restricted to student's institution
+    // 4. Get global leaderboard / ranking restricted to student's institution
     const rankings = await sql`
       SELECT r.email, r.score, u.name, u.college
       FROM "rank" r
@@ -45,6 +69,7 @@ export async function GET() {
 
     return NextResponse.json({
       user: { name: session.name, email: session.email },
+      activeEnrollment,
       quizzes,
       history,
       rankings

@@ -89,7 +89,7 @@ export async function POST(req) {
 
     // Verify ownership of the quiz and matching tenant
     const quizCheck = await sql`
-      SELECT email, total, institution_id FROM "quiz" WHERE eid = ${eid}
+      SELECT email, total, institution_id, academic_year_id, academic_unit_id, subject_id FROM "quiz" WHERE eid = ${eid}
     `;
     if (quizCheck.length === 0) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
@@ -98,6 +98,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
+    const { academic_year_id, academic_unit_id, subject_id } = quizCheck[0];
     const qid = Math.random().toString(36).substring(2, 15);
     
     // Find next sn
@@ -121,8 +122,8 @@ export async function POST(req) {
     await sql.begin(async sql => {
       // 1. Insert Question
       await sql`
-        INSERT INTO "questions" (eid, qid, qns, choice, sn)
-        VALUES (${eid}, ${qid}, ${qns}, 4, ${nextSn})
+        INSERT INTO "questions" (eid, qid, qns, choice, sn, academic_year_id, academic_unit_id, subject_id)
+        VALUES (${eid}, ${qid}, ${qns}, 4, ${nextSn}, ${academic_year_id}, ${academic_unit_id}, ${subject_id})
       `;
 
       // 2. Insert Options
