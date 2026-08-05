@@ -22,7 +22,7 @@ export default function StudentDashboard() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   // Leaderboard Filter States
-  const [leaderboardView, setLeaderboardView] = useState('global'); // 'global' | 'quiz'
+  const [leaderboardView, setLeaderboardView] = useState('global'); // 'global' | 'quiz' | 'subject' | 'section' | 'unit'
   const [selectedQuizId, setSelectedQuizId] = useState(null);
   const [quizLeaderboard, setQuizLeaderboard] = useState([]);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
@@ -30,10 +30,17 @@ export default function StudentDashboard() {
   const [subFilterTeacher, setSubFilterTeacher] = useState('');
   const [subFilterQuiz, setSubFilterQuiz] = useState('');
 
+  // Dynamic ranking states
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [dynamicLeaderboard, setDynamicLeaderboard] = useState([]);
+  const [myDynamicRank, setMyDynamicRank] = useState(null);
+  const [loadingDynamic, setLoadingDynamic] = useState(false);
+  const [dynamicError, setDynamicError] = useState('');
+
   const fetchQuizLeaderboard = async (eid) => {
     setLoadingLeaderboard(true);
     try {
-      const res = await fetch(`/api/leaderboard?eid=${eid}`);
+      const res = await fetch(`/api/leaderboard/dynamic?level=exam&eid=${eid}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load leaderboard');
       setQuizLeaderboard(json.leaderboard || []);
@@ -41,6 +48,43 @@ export default function StudentDashboard() {
       showAlert(err.message, 'Error');
     } finally {
       setLoadingLeaderboard(false);
+    }
+  };
+
+  const fetchDynamicLeaderboard = async (viewType, filterVal = '') => {
+    if (!data?.enrollment) return;
+    setLoadingDynamic(true);
+    setDynamicError('');
+    setDynamicLeaderboard([]);
+    setMyDynamicRank(null);
+    
+    try {
+      let url = `/api/leaderboard/dynamic?level=${viewType}&academicYearId=${data.enrollment.academic_year_id}`;
+      if (viewType === 'subject') {
+        if (!filterVal) {
+          setLoadingDynamic(false);
+          return;
+        }
+        url += `&subjectId=${filterVal}&academicUnitId=${data.enrollment.academic_unit_id}`;
+      } else if (viewType === 'section') {
+        if (!data.enrollment.section_id) {
+          throw new Error("You are not assigned to a section to view section rankings.");
+        }
+        url += `&sectionId=${data.enrollment.section_id}`;
+      } else if (viewType === 'unit') {
+        url += `&academicUnitId=${data.enrollment.academic_unit_id}`;
+      }
+
+      const res = await fetch(url);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load rankings');
+      
+      setDynamicLeaderboard(json.leaderboard || []);
+      setMyDynamicRank(json.myRank || null);
+    } catch (err) {
+      setDynamicError(err.message);
+    } finally {
+      setLoadingDynamic(false);
     }
   };
 
@@ -405,13 +449,13 @@ export default function StudentDashboard() {
                   <h1 className="text-3xl font-heading font-black">Performance Standings</h1>
                   <p className="text-text-muted text-sm mt-1">Check how you stack up against top students.</p>
                 </div>
-                <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+                <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1 overflow-x-auto scrollbar-hide">
                   <button
                     onClick={() => {
                       setLeaderboardView('global');
                       setSelectedQuizId(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                       leaderboardView === 'global'
                         ? 'bg-accent-teal text-white shadow-md'
                         : 'text-text-muted hover:text-white'
@@ -420,8 +464,11 @@ export default function StudentDashboard() {
                     Global
                   </button>
                   <button
-                    onClick={() => setLeaderboardView('quiz')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    onClick={() => {
+                      setLeaderboardView('quiz');
+                      setSelectedQuizId(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                       leaderboardView === 'quiz'
                         ? 'bg-accent-teal text-white shadow-md'
                         : 'text-text-muted hover:text-white'
@@ -429,10 +476,53 @@ export default function StudentDashboard() {
                   >
                     By Quiz
                   </button>
+                  <button
+                    onClick={() => {
+                      setLeaderboardView('subject');
+                      setSelectedSubjectId('');
+                      setDynamicLeaderboard([]);
+                      setMyDynamicRank(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      leaderboardView === 'subject'
+                        ? 'bg-accent-teal text-white shadow-md'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    By Subject
+                  </button>
+                  {data?.enrollment?.section_name && (
+                    <button
+                      onClick={() => {
+                        setLeaderboardView('section');
+                        fetchDynamicLeaderboard('section');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        leaderboardView === 'section'
+                          ? 'bg-accent-teal text-white shadow-md'
+                          : 'text-text-muted hover:text-white'
+                      }`}
+                    >
+                      By Section
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setLeaderboardView('unit');
+                      fetchDynamicLeaderboard('unit');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      leaderboardView === 'unit'
+                        ? 'bg-accent-teal text-white shadow-md'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    By Class
+                  </button>
                 </div>
               </div>
 
-              {leaderboardView === 'global' ? (
+              {leaderboardView === 'global' && (
                 /* Global Leaderboard */
                 <>
                   {data?.rankings?.length === 0 ? (
@@ -476,7 +566,9 @@ export default function StudentDashboard() {
                     </div>
                   )}
                 </>
-              ) : (
+              )}
+
+              {leaderboardView === 'quiz' && (
                 /* Quiz specific leaderboard */
                 <div className="space-y-6">
                   {/* Select Filters */}
@@ -597,6 +689,99 @@ export default function StudentDashboard() {
                   ) : (
                     <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
                       Please select a Subject, Teacher, and Quiz from the dropdowns above.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {['subject', 'section', 'unit'].includes(leaderboardView) && (
+                <div className="space-y-6">
+                  {/* Select Filter for Subject */}
+                  {leaderboardView === 'subject' && (
+                    <div className="bg-white/3 border border-white/5 p-4 rounded-2xl max-w-sm">
+                      <label className="text-[10px] text-text-muted uppercase font-bold">Select Subject</label>
+                      <select
+                        value={selectedSubjectId}
+                        onChange={(e) => {
+                          setSelectedSubjectId(e.target.value);
+                          fetchDynamicLeaderboard('subject', e.target.value);
+                        }}
+                        className="w-full mt-1 bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-accent-teal/50 focus:ring-1 focus:ring-accent-teal/20 transition-all text-white cursor-pointer"
+                      >
+                        <option value="">Select Subject</option>
+                        {Array.from(new Map(data?.quizzes?.map(q => [q.subject_id, { id: q.subject_id, name: q.subject_name }]) || []).values()).map(sub => (
+                          <option key={sub.id} value={sub.id}>{sub.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {loadingDynamic ? (
+                    <div className="py-20 flex flex-col items-center justify-center gap-4">
+                      <div className="w-8 h-8 border-t-2 border-accent-teal rounded-full animate-spin"></div>
+                      <p className="text-xs text-text-muted">Calculating standings...</p>
+                    </div>
+                  ) : dynamicError ? (
+                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-6 text-rose-400 text-xs font-semibold">
+                      {dynamicError}
+                    </div>
+                  ) : leaderboardView === 'subject' && !selectedSubjectId ? (
+                    <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                      Please select a subject to load rankings.
+                    </div>
+                  ) : dynamicLeaderboard.length === 0 ? (
+                    <div className="bg-white/3 border border-white/5 rounded-2xl p-12 text-center text-text-muted text-xs italic">
+                      No records found for this ranking level.
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Student's Rank Callout Card */}
+                      {myDynamicRank && (
+                        <div className="bg-accent-teal/10 border border-accent-teal/20 rounded-3xl p-6 max-w-sm flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Your Standings</span>
+                            <h3 className="text-lg font-bold text-white mt-0.5">Rank #{myDynamicRank.rank}</h3>
+                            <p className="text-[10px] text-text-muted mt-0.5">Weighted Score: {myDynamicRank.score.toFixed(1)}%</p>
+                          </div>
+                          <span className="text-3xl">🏅</span>
+                        </div>
+                      )}
+
+                      <div className="bg-zinc-950 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-white/10 bg-white/3 text-xs uppercase tracking-wider text-text-muted font-bold">
+                                <th className="p-4 w-20 text-center">Rank</th>
+                                <th className="p-4">Student</th>
+                                <th className="p-4 text-center">Score Percentage</th>
+                                <th className="p-4 text-center">Exams Attempted</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 text-sm">
+                              {dynamicLeaderboard.map((row) => (
+                                <tr 
+                                  key={row.email} 
+                                  className={`transition-colors ${row.email === data.user.email ? 'bg-accent-teal/5 hover:bg-accent-teal/10' : 'hover:bg-white/2'}`}
+                                >
+                                  <td className="p-4 font-black text-center text-accent-teal text-base">#{row.rank}</td>
+                                  <td className="p-4 font-bold flex items-center gap-2">
+                                    <div>
+                                      <div className="text-white">{row.name}</div>
+                                      <div className="text-[10px] text-text-subtle">{row.email}</div>
+                                    </div>
+                                    {row.email === data.user.email && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-teal text-white font-black uppercase">You</span>
+                                    )}
+                                  </td>
+                                  <td className="p-4 text-center font-black text-white">{row.score.toFixed(1)}%</td>
+                                  <td className="p-4 text-center text-text-muted font-bold">{row.exams_attempted}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, UserPlus, Trash2, LogOut, ShieldAlert, Mail, Lock,
   GraduationCap, CheckCircle, HelpCircle, Sparkles, Building, Globe, MapPin, Phone,
-  Plus, Search, ArrowRight, Eye, EyeOff, CheckSquare, Users, BookOpen, Calendar, GitBranch, ChevronRight
+  Plus, Search, ArrowRight, Eye, EyeOff, CheckSquare, Users, BookOpen, Calendar, GitBranch, ChevronRight, UploadCloud
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -26,6 +26,21 @@ export default function AdminDashboard() {
   const [teacherAssignments, setTeacherAssignments] = useState([]);
   const [studentEnrollments, setStudentEnrollments] = useState([]);
   const [academicSubTab, setAcademicSubTab] = useState('years'); // 'years' | 'structure' | 'sections' | 'subjects' | 'teachers' | 'students' | 'wizard'
+  
+  // Leaderboard settings
+  const [settings, setSettings] = useState({
+    timezone: 'Asia/Kolkata',
+    leaderboard_enabled: true,
+    leaderboard_level_exam: true,
+    leaderboard_level_subject: true,
+    leaderboard_level_section: true,
+    leaderboard_level_unit: true,
+    student_visibility: 'FULL_LEADERBOARD',
+    top_n_count: 10,
+    min_qualifying_exams: 3,
+    multiple_attempts_rule: 'BEST_ATTEMPT'
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Modals state for Academic Setup
   const [showAddYearModal, setShowAddYearModal] = useState(false);
@@ -67,6 +82,17 @@ export default function AdminDashboard() {
   });
   const [profileSuccess, setProfileSuccess] = useState('');
   const [updatingProfile, setUpdatingProfile] = useState(false);
+
+  // Bulk Import Student & Teacher States
+  const [showStudentImportModal, setShowStudentImportModal] = useState(false);
+  const [studentImportPreview, setStudentImportPreview] = useState(null);
+  const [studentImportRows, setStudentImportRows] = useState([]);
+  const [generatedStudentCreds, setGeneratedStudentCreds] = useState(null);
+
+  const [showTeacherImportModal, setShowTeacherImportModal] = useState(false);
+  const [teacherImportPreview, setTeacherImportPreview] = useState(null);
+  const [teacherImportRows, setTeacherImportRows] = useState([]);
+  const [generatedTeacherCreds, setGeneratedTeacherCreds] = useState(null);
 
   // Custom dialog state
   const [modalConfig, setModalConfig] = useState({
@@ -151,6 +177,140 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleStudentCSVUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target.result;
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const rows = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+          const values = matches.map(v => v.trim().replace(/^"|"$/g, ''));
+          const row = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          rows.push(row);
+        }
+
+        setLoading(true);
+        const res = await fetch('/api/admin/students/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'preview', rows })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed to parse student CSV');
+        setStudentImportPreview(json.preview);
+        setStudentImportRows(json.preview.rows || []);
+      } catch (err) {
+        showAlert(err.message, 'File Error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmStudentImport = async () => {
+    if (!studentImportRows || studentImportRows.length === 0) return;
+    const validRows = studentImportRows.filter(r => r.errors.length === 0);
+    if (validRows.length === 0) {
+      showAlert('No valid student rows found.', 'Error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/students/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', rows: validRows })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to import students');
+      setGeneratedStudentCreds(json.credentials || []);
+      showAlert(`Imported student accounts successfully! Please copy their credentials below.`, 'Completed');
+      fetchDashboardData();
+    } catch (err) {
+      showAlert(err.message, 'Import Error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTeacherCSVUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target.result;
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const rows = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+          const values = matches.map(v => v.trim().replace(/^"|"$/g, ''));
+          const row = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          rows.push(row);
+        }
+
+        setLoading(true);
+        const res = await fetch('/api/admin/teachers/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'preview', rows })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed to parse teacher CSV');
+        setTeacherImportPreview(json.preview);
+        setTeacherImportRows(json.preview.rows || []);
+      } catch (err) {
+        showAlert(err.message, 'File Error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmTeacherImport = async () => {
+    if (!teacherImportRows || teacherImportRows.length === 0) return;
+    const validRows = teacherImportRows.filter(r => r.errors.length === 0);
+    if (validRows.length === 0) {
+      showAlert('No valid teacher rows found.', 'Error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/teachers/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', rows: validRows })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to import teachers');
+      setGeneratedTeacherCreds(json.credentials || []);
+      showAlert(`Imported teacher accounts successfully! Please copy their credentials below.`, 'Completed');
+      fetchDashboardData();
+    } catch (err) {
+      showAlert(err.message, 'Import Error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchAcademicYears = async () => {
     try {
       const res = await fetch('/api/admin/academic-years');
@@ -208,9 +368,43 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setSettings(data.settings);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err);
+    }
+  };
+
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save settings');
+      showAlert('Institution leaderboard and timezone settings saved successfully.', 'Success');
+    } catch (err) {
+      showAlert(err.message, 'Error');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
     fetchAcademicYears();
+    fetchSettings();
   }, []);
 
   useEffect(() => {
@@ -1038,6 +1232,151 @@ export default function AdminDashboard() {
     </div>
   );
 
+  const renderLeaderboardSettingsTab = () => {
+    return (
+      <div className="bg-zinc-950 border border-white/10 rounded-3xl p-8 max-w-2xl">
+        <h2 className="text-xl font-heading font-black mb-1">Leaderboard & Timezone Settings</h2>
+        <p className="text-text-muted text-xs mb-6">Manage how performance rankings and dates are resolved for your institution.</p>
+
+        <form onSubmit={handleSaveSettings} className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Institution Timezone</label>
+              <select 
+                value={settings.timezone} 
+                onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accent-teal/50"
+              >
+                <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">America/New_York (EST)</option>
+                <option value="Europe/London">Europe/London (GMT)</option>
+                <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Multiple Attempts Leaderboard Rule</label>
+              <select 
+                value={settings.multiple_attempts_rule} 
+                onChange={(e) => setSettings({ ...settings, multiple_attempts_rule: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accent-teal/50"
+              >
+                <option value="BEST_ATTEMPT">Best Attempt (Highest Score)</option>
+                <option value="FIRST_ATTEMPT">First Attempt Only</option>
+                <option value="LATEST_ATTEMPT">Latest Attempt</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Student Rankings Visibility</label>
+              <select 
+                value={settings.student_visibility} 
+                onChange={(e) => setSettings({ ...settings, student_visibility: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accent-teal/50"
+              >
+                <option value="FULL_LEADERBOARD">Full Leaderboard (Show All)</option>
+                <option value="TOP_N">Top N + My Rank (Restricted)</option>
+                <option value="OWN_RANK_ONLY">Show My Rank Only</option>
+                <option value="HIDDEN">Completely Hidden</option>
+              </select>
+            </div>
+
+            {settings.student_visibility === 'TOP_N' && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Top N Count</label>
+                <input 
+                  type="number" min="3" max="50"
+                  value={settings.top_n_count} 
+                  onChange={(e) => setSettings({ ...settings, top_n_count: parseInt(e.target.value) || 10 })}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accent-teal/50"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Min Subject Qualifying Exams</label>
+              <input 
+                type="number" min="1" max="20"
+                value={settings.min_qualifying_exams} 
+                onChange={(e) => setSettings({ ...settings, min_qualifying_exams: parseInt(e.target.value) || 3 })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accent-teal/50"
+              />
+              <span className="text-[10px] text-text-muted">Minimum tests needed to show in Subject rankings.</span>
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-4 border-t border-white/5">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Leaderboard Level Toggles</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/5">
+                <input 
+                  type="checkbox"
+                  checked={settings.leaderboard_enabled}
+                  onChange={(e) => setSettings({ ...settings, leaderboard_enabled: e.target.checked })}
+                  className="accent-accent-teal w-4 h-4"
+                />
+                <span className="text-xs text-white">Enable Leaderboards Globally</span>
+              </label>
+
+              <label className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/5">
+                <input 
+                  type="checkbox"
+                  checked={settings.leaderboard_level_exam}
+                  onChange={(e) => setSettings({ ...settings, leaderboard_level_exam: e.target.checked })}
+                  className="accent-accent-teal w-4 h-4"
+                />
+                <span className="text-xs text-white">Individual Exam Leaderboards</span>
+              </label>
+
+              <label className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/5">
+                <input 
+                  type="checkbox"
+                  checked={settings.leaderboard_level_subject}
+                  onChange={(e) => setSettings({ ...settings, leaderboard_level_subject: e.target.checked })}
+                  className="accent-accent-teal w-4 h-4"
+                />
+                <span className="text-xs text-white">Subject-Wise Cumulative Leaderboards</span>
+              </label>
+
+              <label className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/5">
+                <input 
+                  type="checkbox"
+                  checked={settings.leaderboard_level_section}
+                  onChange={(e) => setSettings({ ...settings, leaderboard_level_section: e.target.checked })}
+                  className="accent-accent-teal w-4 h-4"
+                />
+                <span className="text-xs text-white">Section Leaderboards (e.g. 10th A)</span>
+              </label>
+
+              <label className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/5">
+                <input 
+                  type="checkbox"
+                  checked={settings.leaderboard_level_unit}
+                  onChange={(e) => setSettings({ ...settings, leaderboard_level_unit: e.target.checked })}
+                  className="accent-accent-teal w-4 h-4"
+                />
+                <span className="text-xs text-white">Class/Semester Leaderboards (e.g. Grade 10)</span>
+              </label>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={savingSettings}
+            className="w-full sm:w-auto bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white font-bold px-8 py-3 rounded-xl text-xs transition-all shadow-lg shadow-accent-teal/20 cursor-pointer"
+          >
+            {savingSettings ? 'Saving Settings...' : 'Save Configuration'}
+          </button>
+        </form>
+      </div>
+    );
+  };
+
   const renderAcademicTab = () => {
     const subTabs = [
       { id: 'years', label: 'Academic Years' },
@@ -1046,6 +1385,7 @@ export default function AdminDashboard() {
       { id: 'subjects', label: 'Subjects' },
       { id: 'assign-teachers', label: 'Teacher Assignments' },
       { id: 'enroll-students', label: 'Student Enrollments' },
+      { id: 'settings', label: 'Leaderboard Settings' },
     ];
     return (
       <div className="space-y-6">
@@ -1070,6 +1410,7 @@ export default function AdminDashboard() {
         {academicSubTab === 'subjects' && renderSubjectsTab()}
         {academicSubTab === 'assign-teachers' && renderTeacherAssignmentsTab()}
         {academicSubTab === 'enroll-students' && renderStudentEnrollmentsTab()}
+        {academicSubTab === 'settings' && renderLeaderboardSettingsTab()}
       </div>
     );
   };
@@ -1316,6 +1657,18 @@ export default function AdminDashboard() {
                     <p className="text-text-muted text-[10px] uppercase font-bold tracking-wider">MODERATOR ACCOUNT</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setTeacherImportPreview(null);
+                    setTeacherImportRows([]);
+                    setGeneratedTeacherCreds(null);
+                    setShowTeacherImportModal(true);
+                  }}
+                  className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <UploadCloud className="w-4 h-4 text-accent-teal" />
+                  Bulk Import Teachers (CSV)
+                </button>
 
                 <form onSubmit={handleAddTeacher} className="space-y-4">
                   <div className="space-y-1">
@@ -1436,6 +1789,18 @@ export default function AdminDashboard() {
                     <p className="text-text-muted text-[10px] uppercase font-bold tracking-wider">CANDIDATE ACCOUNT</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setStudentImportPreview(null);
+                    setStudentImportRows([]);
+                    setGeneratedStudentCreds(null);
+                    setShowStudentImportModal(true);
+                  }}
+                  className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <UploadCloud className="w-4 h-4 text-accent-teal" />
+                  Bulk Import Students (CSV)
+                </button>
 
                 <form onSubmit={handleAddStudent} className="space-y-4">
                   <div className="space-y-1">
@@ -1542,6 +1907,250 @@ export default function AdminDashboard() {
                 </form>
               </div>
             </motion.div>
+          )}
+
+          {/* Modal: Bulk Import Teachers */}
+          {showTeacherImportModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+              <div className="bg-zinc-950 border border-white/10 rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl">
+                <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                  <h3 className="text-xl font-bold text-accent-teal">Bulk Import Teachers</h3>
+                  <button
+                    onClick={() => {
+                      const headers = ['email', 'password'];
+                      const sampleRow = ['"teacher1@school.com"', '"Temp@123"'];
+                      const csv = [headers.join(','), sampleRow.join(',')].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = 'teacher_import_template.csv';
+                      link.click();
+                    }}
+                    className="text-xs text-accent-teal-light hover:underline font-bold"
+                  >
+                    Download CSV Template
+                  </button>
+                </div>
+
+                {generatedTeacherCreds ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-emerald-400 font-bold">✓ Teachers imported! Save these credentials now — passwords won&apos;t be shown again.</p>
+                    <div className="border border-white/10 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-white/3 border-b border-white/10 text-text-muted uppercase font-bold">
+                            <th className="p-3">Email</th>
+                            <th className="p-3">Temp Password</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {generatedTeacherCreds.map((c, idx) => (
+                            <tr key={idx} className="font-mono">
+                              <td className="p-3 text-white">{c.email}</td>
+                              <td className="p-3 text-amber-400">{c.password}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button onClick={() => setShowTeacherImportModal(false)} className="w-full py-2.5 bg-accent-teal text-white text-xs font-bold rounded-xl">Close</button>
+                  </div>
+                ) : !teacherImportPreview ? (
+                  <div className="border-2 border-dashed border-white/10 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-4">
+                    <UploadCloud className="w-12 h-12 text-text-muted" />
+                    <div>
+                      <p className="text-sm font-semibold">Upload teacher CSV file</p>
+                      <p className="text-xs text-text-muted mt-1">Required columns: email, password</p>
+                    </div>
+                    <label className="px-4 py-2 bg-accent-teal hover:bg-accent-teal-light text-white text-xs font-bold rounded-xl cursor-pointer transition-colors">
+                      Select CSV File
+                      <input type="file" accept=".csv" onChange={handleTeacherCSVUpload} className="hidden" />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="bg-white/3 border border-white/5 p-3 rounded-xl">
+                        <p className="text-xs text-text-muted">Total</p>
+                        <p className="text-lg font-bold">{teacherImportPreview.summary?.total || teacherImportRows.length}</p>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl text-emerald-400">
+                        <p className="text-xs">Valid</p>
+                        <p className="text-lg font-bold">{teacherImportRows.filter(r => r.errors?.length === 0).length}</p>
+                      </div>
+                      <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl text-rose-400">
+                        <p className="text-xs">Errors</p>
+                        <p className="text-lg font-bold">{teacherImportRows.filter(r => r.errors?.length > 0).length}</p>
+                      </div>
+                    </div>
+                    <div className="border border-white/10 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-white/3 border-b border-white/10 text-text-muted uppercase font-bold">
+                            <th className="p-2.5">Row</th>
+                            <th className="p-2.5">Email</th>
+                            <th className="p-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {teacherImportRows.map((r, idx) => (
+                            <tr key={idx}>
+                              <td className="p-2.5 text-text-muted">{idx + 1}</td>
+                              <td className="p-2.5">{r.email}</td>
+                              <td className="p-2.5">
+                                {r.errors?.length > 0 ? (
+                                  <span className="text-rose-400 font-bold">{r.errors[0]}</span>
+                                ) : (
+                                  <span className="text-emerald-400 font-bold">Ready</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex justify-between items-center pt-3 border-t border-white/5">
+                      <button onClick={() => setTeacherImportPreview(null)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold">Reset</button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowTeacherImportModal(false)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold">Cancel</button>
+                        <button
+                          disabled={loading || teacherImportRows.filter(r => r.errors?.length === 0).length === 0}
+                          onClick={handleConfirmTeacherImport}
+                          className="px-5 py-2 bg-accent-teal hover:bg-accent-teal-light text-white font-bold rounded-xl text-xs disabled:opacity-50"
+                        >
+                          {loading ? 'Importing...' : 'Import Valid Rows'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Bulk Import Students */}
+          {showStudentImportModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+              <div className="bg-zinc-950 border border-white/10 rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl">
+                <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                  <h3 className="text-xl font-bold text-accent-teal">Bulk Import Students</h3>
+                  <button
+                    onClick={() => {
+                      const headers = ['name', 'email', 'password', 'gender', 'mobile'];
+                      const sampleRow = ['"Ali Ahmed"', '"ali@school.com"', '"Pass@123"', '"M"', '"9876543210"'];
+                      const csv = [headers.join(','), sampleRow.join(',')].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = 'student_import_template.csv';
+                      link.click();
+                    }}
+                    className="text-xs text-accent-teal-light hover:underline font-bold"
+                  >
+                    Download CSV Template
+                  </button>
+                </div>
+
+                {generatedStudentCreds ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-emerald-400 font-bold">✓ Students imported! Save these credentials now — passwords won&apos;t be shown again.</p>
+                    <div className="border border-white/10 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-white/3 border-b border-white/10 text-text-muted uppercase font-bold">
+                            <th className="p-3">Name</th>
+                            <th className="p-3">Email</th>
+                            <th className="p-3">Temp Password</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {generatedStudentCreds.map((c, idx) => (
+                            <tr key={idx} className="font-mono">
+                              <td className="p-3 text-white">{c.name}</td>
+                              <td className="p-3 text-white">{c.email}</td>
+                              <td className="p-3 text-amber-400">{c.password}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button onClick={() => setShowStudentImportModal(false)} className="w-full py-2.5 bg-accent-teal text-white text-xs font-bold rounded-xl">Close</button>
+                  </div>
+                ) : !studentImportPreview ? (
+                  <div className="border-2 border-dashed border-white/10 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-4">
+                    <UploadCloud className="w-12 h-12 text-text-muted" />
+                    <div>
+                      <p className="text-sm font-semibold">Upload student CSV file</p>
+                      <p className="text-xs text-text-muted mt-1">Required columns: name, email, password, gender, mobile</p>
+                    </div>
+                    <label className="px-4 py-2 bg-accent-teal hover:bg-accent-teal-light text-white text-xs font-bold rounded-xl cursor-pointer transition-colors">
+                      Select CSV File
+                      <input type="file" accept=".csv" onChange={handleStudentCSVUpload} className="hidden" />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="bg-white/3 border border-white/5 p-3 rounded-xl">
+                        <p className="text-xs text-text-muted">Total</p>
+                        <p className="text-lg font-bold">{studentImportRows.length}</p>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl text-emerald-400">
+                        <p className="text-xs">Valid</p>
+                        <p className="text-lg font-bold">{studentImportRows.filter(r => r.errors?.length === 0).length}</p>
+                      </div>
+                      <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl text-rose-400">
+                        <p className="text-xs">Errors</p>
+                        <p className="text-lg font-bold">{studentImportRows.filter(r => r.errors?.length > 0).length}</p>
+                      </div>
+                    </div>
+                    <div className="border border-white/10 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-white/3 border-b border-white/10 text-text-muted uppercase font-bold">
+                            <th className="p-2.5">Row</th>
+                            <th className="p-2.5">Name</th>
+                            <th className="p-2.5">Email</th>
+                            <th className="p-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {studentImportRows.map((r, idx) => (
+                            <tr key={idx}>
+                              <td className="p-2.5 text-text-muted">{idx + 1}</td>
+                              <td className="p-2.5">{r.name}</td>
+                              <td className="p-2.5">{r.email}</td>
+                              <td className="p-2.5">
+                                {r.errors?.length > 0 ? (
+                                  <span className="text-rose-400 font-bold">{r.errors[0]}</span>
+                                ) : (
+                                  <span className="text-emerald-400 font-bold">Ready</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex justify-between items-center pt-3 border-t border-white/5">
+                      <button onClick={() => setStudentImportPreview(null)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold">Reset</button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowStudentImportModal(false)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold">Cancel</button>
+                        <button
+                          disabled={loading || studentImportRows.filter(r => r.errors?.length === 0).length === 0}
+                          onClick={handleConfirmStudentImport}
+                          className="px-5 py-2 bg-accent-teal hover:bg-accent-teal-light text-white font-bold rounded-xl text-xs disabled:opacity-50"
+                        >
+                          {loading ? 'Importing...' : 'Import Valid Rows'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === 'profile' && (

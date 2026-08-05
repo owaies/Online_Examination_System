@@ -94,9 +94,15 @@ export async function POST(req) {
       return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
     }
 
-    const { title, sahi, wrong, time, tag, desc, questions, academicYearId, academicUnitId, sectionId, subjectId } = await req.json();
+    const { 
+      title, sahi, wrong, time, tag, desc, questions, 
+      academicYearId, academicUnitId, sectionId, subjectId,
+      scheduledStart, scheduledEnd, maxAttempts, shuffleQuestions, 
+      shuffleOptions, showResult, showCorrectAnswers, leaderboardEnabled, quizStatus, passingPercentage,
+      selectionMode, poolId, blueprintId, questionOrder
+    } = await req.json();
     
-    if (!title || !sahi || !wrong || !time || !questions || questions.length === 0 || !academicYearId || !academicUnitId || !subjectId) {
+    if (!title || !sahi || !wrong || !time || !academicYearId || !academicUnitId || !subjectId) {
       return NextResponse.json({ error: 'Missing required quiz fields' }, { status: 400 });
     }
 
@@ -119,51 +125,142 @@ export async function POST(req) {
     }
 
     const eid = Math.random().toString(36).substring(2, 15);
-    const totalQuestions = questions.length;
+    const totalQuestions = selectionMode === 'RANDOM_SET_PER_STUDENT' ? parseInt(req.json.total || '10') : (questions?.length || 0);
+
+    // Calculate total marks based on question-specific marks
+    let totalMarks = 0;
+    if (questions && questions.length > 0) {
+      questions.forEach(q => {
+        totalMarks += parseInt(q.marks || sahi || '1');
+      });
+    } else {
+      totalMarks = totalQuestions * parseInt(sahi);
+    }
+
+    const passPercent = parseInt(passingPercentage || '40');
+    const passingMarks = Math.round((totalMarks * passPercent) / 100);
 
     // Use transaction for atomic insertion of Quiz + Questions + Options + Answers
     await sql.begin(async sql => {
       // 1. Insert Quiz
       await sql`
-        INSERT INTO "quiz" (eid, title, sahi, wrong, total, time, intro, tag, date, email, institution_id, academic_year_id, academic_unit_id, section_id, subject_id)
-        VALUES (${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email}, ${instId}, ${academicYearId}, ${academicUnitId}, ${sectionId || null}, ${subjectId})
+        INSERT INTO "quiz" (
+          eid, title, sahi, wrong, total, time, intro, tag, date, email, institution_id, 
+          academic_year_id, academic_unit_id, section_id, subject_id,
+          description, scheduled_start, scheduled_end, total_marks, passing_marks, passing_percentage,
+          max_attempts, shuffle_questions, shuffle_options, show_result, show_correct_answers, leaderboard_enabled, quiz_status,
+          selection_mode, pool_id, blueprint_id, question_order
+        )
+        VALUES (
+          ${eid}, ${title}, ${parseInt(sahi)}, ${parseInt(wrong)}, ${totalQuestions}, ${parseInt(time)}, ${desc || ''}, ${tag || 'general'}, NOW(), ${email}, ${instId}, 
+          ${academicYearId}, ${academicUnitId}, ${sectionId || null}, ${subjectId},
+          ${desc || ''}, ${scheduledStart ? new Date(scheduledStart) : null}, ${scheduledEnd ? new Date(scheduledEnd) : null}, ${totalMarks}, ${passingMarks}, ${passPercent},
+          ${parseInt(maxAttempts || '1')}, ${!!shuffleQuestions}, ${!!shuffleOptions}, ${showResult !== false}, ${showCorrectAnswers !== false}, ${leaderboardEnabled !== false}, ${quizStatus || 'LIVE'},
+          ${selectionMode || 'SAME_SET_FOR_ALL'}, ${poolId || null}, ${blueprintId || null}, ${JSON.stringify(questionOrder || [])}::jsonb
+        )
       `;
 
-      // 2. Insert Questions, Options, and Correct Answers
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        const qid = Math.random().toString(36).substring(2, 15);
-        const sn = i + 1;
+      // 2. Snapshot Questions into the quiz if manual mode
+      if (selectionMode !== 'RANDOM_SET_PER_STUDENT' && questions && questions.length > 0) {
+        for (let i = 0; i < questions.length; i++) {
+          const q = questions[i];
+          const sn = i + 1;
+          const qMarks = parseInt(q.marks || sahi || '1');
 
-        // Insert Question
-        await sql`
-          INSERT INTO "questions" (eid, qid, qns, choice, sn, academic_year_id, academic_unit_id, subject_id)
-          VALUES (${eid}, ${qid}, ${q.qns}, 4, ${sn}, ${academicYearId}, ${academicUnitId}, ${subjectId})
-        `;
+          let masterQid = q.qid;
+          
+          // If the question is new (does not exist in Question Bank), create the master copy first
+          if (!masterQid) {
+            masterQid = 'q-' + Math.random().toString(36).substring(2, 11);
+            
+            await sql`
+              INSERT INTO "questions" (
+                qid, eid, qns, choice, sn, subject_id, topic_id, marks, difficulty, status, explanation, tags, sharing, institution_id, creator_id
+              ) VALUES (
+                ${masterQid}, NULL, ${q.qns.trim()}, 4, ${sn}, ${subjectId}, ${q.topic_id || null}, ${qMarks}, 
+                ${q.difficulty || 'UNSPECIFIED'}, 'ACTIVE', ${q.explanation || null}, ${JSON.stringify(q.tags || [])}::jsonb, 
+                'PRIVATE', ${instId}, ${email}
+              )
+            `;
 
-        // Insert Options
-        const optionIds = {
-          a: Math.random().toString(36).substring(2, 15),
-          b: Math.random().toString(36).substring(2, 15),
-          c: Math.random().toString(36).substring(2, 15),
-          d: Math.random().toString(36).substring(2, 15)
-        };
+            const masterOptionIds = {
+              a: Math.random().toString(36).substring(2, 15),
+              b: Math.random().toString(36).substring(2, 15),
+              c: Math.random().toString(36).substring(2, 15),
+              d: Math.random().toString(36).substring(2, 15)
+            };
 
-        await sql`
-          INSERT INTO "options" (qid, option, optionid)
-          VALUES 
-            (${qid}, ${q.a}, ${optionIds.a}),
-            (${qid}, ${q.b}, ${optionIds.b}),
-            (${qid}, ${q.c}, ${optionIds.c}),
-            (${qid}, ${q.d}, ${optionIds.d})
-        `;
+            await sql`
+              INSERT INTO "options" (qid, option, optionid)
+              VALUES 
+                (${masterQid}, ${q.a || q.options?.[0]?.option}, ${masterOptionIds.a}),
+                (${masterQid}, ${q.b || q.options?.[1]?.option}, ${masterOptionIds.b}),
+                (${masterQid}, ${q.c || q.options?.[2]?.option}, ${masterOptionIds.c}),
+                (${masterQid}, ${q.d || q.options?.[3]?.option}, ${masterOptionIds.d})
+            `;
 
-        // Insert Correct Answer
-        const correctAnsId = optionIds[q.correct.toLowerCase()];
-        await sql`
-          INSERT INTO "answer" (qid, ansid)
-          VALUES (${qid}, ${correctAnsId})
-        `;
+            const correctLetter = q.correct || 'A';
+            const masterCorrectAnsId = masterOptionIds[correctLetter.toLowerCase()];
+            await sql`
+              INSERT INTO "answer" (qid, ansid)
+              VALUES (${masterQid}, ${masterCorrectAnsId})
+            `;
+          }
+
+          // Now create the snapshotted copy for the quiz with a unique qid
+          const quizQid = 'q-' + Math.random().toString(36).substring(2, 11);
+
+          await sql`
+            INSERT INTO "questions" (
+              qid, eid, qns, choice, sn, subject_id, topic_id, marks, difficulty, status, explanation, tags, sharing, institution_id, creator_id
+            ) VALUES (
+              ${quizQid}, ${eid}, ${q.qns.trim()}, 4, ${sn}, ${subjectId}, ${q.topic_id || null}, ${qMarks}, 
+              ${q.difficulty || 'UNSPECIFIED'}, 'ACTIVE', ${q.explanation || null}, ${JSON.stringify(q.tags || [])}::jsonb, 
+              'PRIVATE', ${instId}, ${email}
+            )
+          `;
+
+          // Fetch options from master question to replicate
+          const masterOptions = await sql`
+            SELECT o.option, o.optionid, 
+                   (SELECT 1 FROM "answer" a WHERE a.qid = ${masterQid} AND a.ansid = o.optionid) as is_correct
+            FROM "options" o
+            WHERE o.qid = ${masterQid}
+          `;
+
+          const quizOptionIds = {
+            a: Math.random().toString(36).substring(2, 15),
+            b: Math.random().toString(36).substring(2, 15),
+            c: Math.random().toString(36).substring(2, 15),
+            d: Math.random().toString(36).substring(2, 15)
+          };
+
+          const keys = ['a', 'b', 'c', 'd'];
+          let quizCorrectAnsId = null;
+
+          for (let k = 0; k < Math.min(masterOptions.length, 4); k++) {
+            const key = keys[k];
+            const newOptId = quizOptionIds[key];
+
+            await sql`
+              INSERT INTO "options" (qid, option, optionid)
+              VALUES (${quizQid}, ${masterOptions[k].option}, ${newOptId})
+            `;
+
+            if (masterOptions[k].is_correct) {
+              quizCorrectAnsId = newOptId;
+            }
+          }
+
+          if (!quizCorrectAnsId) {
+            quizCorrectAnsId = quizOptionIds.a;
+          }
+
+          await sql`
+            INSERT INTO "answer" (qid, ansid)
+            VALUES (${quizQid}, ${quizCorrectAnsId})
+          `;
+        }
       }
     });
 

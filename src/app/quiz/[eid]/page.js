@@ -69,20 +69,49 @@ export default function QuizSession() {
     });
   };
 
+  const [attemptId, setAttemptId] = useState('');
+
   useEffect(() => {
-    const fetchQuiz = async () => {
+    const startOrResumeQuiz = async () => {
       try {
+        // 1. Initialize or resume attempt
+        const initRes = await fetch('/api/student/attempts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eid })
+        });
+        const initJson = await initRes.json();
+        if (!initRes.ok) {
+          throw new Error(initJson.error || 'Failed to start exam session');
+        }
+
+        const attempt = initJson.attempt;
+        setAttemptId(attempt.id);
+        setAnswers(attempt.answers || {});
+
+        // 2. Fetch quiz details
         const res = await fetch(`/api/quiz/${eid}`);
         if (!res.ok) {
           if (res.status === 401) {
             router.push('/');
             return;
           }
-          throw new Error('Failed to load quiz');
+          throw new Error('Failed to load quiz details');
         }
         const json = await res.json();
         setData(json);
-        setTimeLeft(json.quiz.time * 60); // minutes to seconds
+
+        // 3. Compute remaining time securely
+        const startMs = new Date(attempt.started_at).getTime();
+        const nowMs = new Date().getTime();
+        const elapsedSeconds = Math.floor((nowMs - startMs) / 1000);
+        const allowedSeconds = json.quiz.time * 60;
+        const remaining = Math.max(0, allowedSeconds - elapsedSeconds);
+        setTimeLeft(remaining);
+
+        if (remaining <= 0) {
+          handleAutoSubmit();
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -90,11 +119,11 @@ export default function QuizSession() {
       }
     };
     
-    fetchQuiz();
+    startOrResumeQuiz();
   }, [eid]);
 
   useEffect(() => {
-    if (loading || quizFinished || timeLeft <= 0) return;
+    if (loading || quizFinished || timeLeft <= 0 || !attemptId) return;
     
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
@@ -108,26 +137,40 @@ export default function QuizSession() {
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [loading, quizFinished, timeLeft]);
+  }, [loading, quizFinished, timeLeft, attemptId]);
+
+  const saveAnswersProgress = async (updatedAnswers) => {
+    try {
+      await fetch(`/api/student/attempts/${attemptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: updatedAnswers })
+      });
+    } catch (err) {
+      console.error('Autosave failed:', err);
+    }
+  };
 
   const selectOption = (qid, optionid) => {
     if (quizFinished) return;
-    setAnswers(prev => ({
-      ...prev,
+    const updatedAnswers = {
+      ...answers,
       [qid]: optionid
-    }));
+    };
+    setAnswers(updatedAnswers);
+    saveAnswersProgress(updatedAnswers);
   };
 
-  const submitQuiz = async () => {
+  const submitQuiz = async (isAuto = false) => {
     if (submitting) return;
     setSubmitting(true);
     clearInterval(timerRef.current);
 
     try {
-      const res = await fetch(`/api/quiz/${eid}`, {
+      const res = await fetch(`/api/student/attempts/${attemptId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers })
+        body: JSON.stringify({ answers, autoSubmit: isAuto })
       });
       if (!res.ok) throw new Error('Submission failed');
       const json = await res.json();
@@ -142,7 +185,7 @@ export default function QuizSession() {
 
   const handleAutoSubmit = async () => {
     await showAlert("Time's up! Your answers are being submitted automatically.", "Time Expired");
-    submitQuiz();
+    submitQuiz(true);
   };
 
   const formatTime = (seconds) => {
@@ -197,8 +240,9 @@ export default function QuizSession() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 flex items-center justify-center my-8 relative z-10 w-full">
-        <div className="max-w-3xl w-full">
+      <div className="flex-1 flex flex-col lg:flex-row items-start justify-center gap-8 my-8 relative z-10 w-full max-w-5xl mx-auto">
+        {/* Left: Question Area */}
+        <div className="flex-1 w-full max-w-3xl">
           <AnimatePresence mode="wait">
             {!quizFinished ? (
               <motion.div
@@ -298,6 +342,48 @@ export default function QuizSession() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Right: Question Navigator */}
+        {!quizFinished && (
+          <div className="w-full lg:w-64 bg-zinc-950 border border-white/10 rounded-3xl p-6 shadow-xl space-y-4">
+            <h3 className="text-xs uppercase tracking-wider font-bold text-text-muted">Question Navigator</h3>
+            <div className="grid grid-cols-5 gap-2">
+              {data?.questions?.map((q, idx) => {
+                const isCurrent = idx === currentIdx;
+                const isAnswered = !!answers[q.qid];
+                return (
+                  <button
+                    key={q.qid}
+                    onClick={() => setCurrentIdx(idx)}
+                    className={`w-10 h-10 rounded-xl font-black text-xs transition-all flex items-center justify-center border cursor-pointer ${
+                      isCurrent
+                        ? 'bg-accent-teal border-accent-teal text-white shadow-lg shadow-accent-teal/20'
+                        : isAnswered
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-col gap-2 pt-2 border-t border-white/5 text-[10px] text-text-muted font-bold uppercase tracking-wider">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-accent-teal" />
+                <span>Current</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-emerald-500/10 border border-emerald-500/20" />
+                <span>Answered</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-white/5 border border-white/10" />
+                <span>Unanswered</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Control Bar */}
@@ -328,8 +414,17 @@ export default function QuizSession() {
           ) : (
             <button
               onClick={async () => {
-                const confirmed = await showConfirm("Are you sure you want to finish and submit your exam?", "Submit Quiz");
-                if (confirmed) submitQuiz();
+                const totalQ = data?.questions?.length || 0;
+                const answeredCount = Object.keys(answers).length;
+                const unansweredCount = totalQ - answeredCount;
+                
+                let msg = "Are you sure you want to finish and submit your exam?";
+                if (unansweredCount > 0) {
+                  msg = `You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Are you sure you want to submit anyway?`;
+                }
+
+                const confirmed = await showConfirm(msg, "Submit Exam");
+                if (confirmed) submitQuiz(false);
               }}
               disabled={submitting}
               className="bg-gradient-to-r from-accent-teal to-teal-500 hover:from-teal-500 hover:to-accent-teal text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-accent-teal/20 cursor-pointer"

@@ -9,19 +9,24 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (session.isSuspended) {
-      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended." }, { status: 403 });
     }
 
     const { eid } = await params;
+    const email = session.email;
     const instId = session.institution_id;
 
     // Fetch quiz info and verify tenant isolation
     const quizResult = await sql`
-      SELECT title, time, total, sahi, wrong, institution_id FROM "quiz" WHERE eid = ${eid}
+      SELECT eid, title, description, time, total, sahi, wrong, max_attempts, 
+             scheduled_start, scheduled_end, shuffle_questions, shuffle_options, 
+             show_result, show_correct_answers, leaderboard_enabled, quiz_status, institution_id, academic_year_id, academic_unit_id, section_id
+      FROM "quiz" 
+      WHERE eid = ${eid}
     `;
 
     if (quizResult.length === 0) {
-      return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
     }
 
     const quiz = quizResult[0];
@@ -29,25 +34,84 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
     }
 
-    // Fetch questions
-    const questions = await sql`
-      SELECT qid, qns, sn FROM "questions" WHERE eid = ${eid} ORDER BY sn ASC
+    // Verify Active Enrollment
+    const enrollment = await sql`
+      SELECT academic_year_id, academic_unit_id, section_id
+      FROM "student_enrollment"
+      WHERE student_id = ${email} AND institution_id = ${instId} AND status = 'active'
+      LIMIT 1
     `;
-
-    // Fetch options for all questions
-    const qids = questions.map(q => q.qid);
-    let options = [];
-    if (qids.length > 0) {
-      options = await sql`
-        SELECT qid, option, optionid FROM "options" WHERE qid IN (${qids})
-      `;
+    if (enrollment.length === 0) {
+      return NextResponse.json({ error: 'Forbidden: You have no active enrollment.' }, { status: 403 });
     }
 
-    // Structure output
-    const structuredQuestions = questions.map(q => ({
-      ...q,
-      options: options.filter(o => o.qid === q.qid)
-    }));
+    const activeEnroll = enrollment[0];
+    if (activeEnroll.academic_year_id !== quiz.academic_year_id || activeEnroll.academic_unit_id !== quiz.academic_unit_id) {
+      return NextResponse.json({ error: 'Forbidden: This exam is not for your class.' }, { status: 403 });
+    }
+    if (quiz.section_id && activeEnroll.section_id !== quiz.section_id) {
+      return NextResponse.json({ error: 'Forbidden: This exam is restricted to another section.' }, { status: 403 });
+    }
+
+    // Verify Scheduling
+    const now = new Date();
+    if (quiz.scheduled_start && now < new Date(quiz.scheduled_start)) {
+      return NextResponse.json({ error: 'This exam has not started yet.' }, { status: 403 });
+    }
+    if (quiz.scheduled_end && now > new Date(quiz.scheduled_end)) {
+      return NextResponse.json({ error: 'This exam has already ended.' }, { status: 403 });
+    }
+    if (quiz.quiz_status === 'DRAFT') {
+      return NextResponse.json({ error: 'This exam is not published.' }, { status: 403 });
+    }
+
+    // Check attempts limit
+    const attempts = await sql`
+      SELECT COUNT(*) as count FROM "quiz_attempt"
+      WHERE eid = ${eid} AND email = ${email} AND status = 'SUBMITTED'
+    `;
+    const attemptCount = parseInt(attempts[0]?.count || '0');
+    if (attemptCount >= (quiz.max_attempts || 1)) {
+      return NextResponse.json({ error: 'Maximum attempt limit reached for this exam.' }, { status: 403 });
+    }
+
+    // Check if there is an active in-progress attempt
+    const activeAttempt = await sql`
+      SELECT id, question_set FROM "quiz_attempt"
+      WHERE eid = ${eid} AND email = ${email} AND status = 'IN_PROGRESS'
+      LIMIT 1
+    `;
+
+    let structuredQuestions = [];
+
+    if (activeAttempt.length > 0 && activeAttempt[0].question_set) {
+      // Load questions from the attempt's snapshotted/randomized question_set
+      const fullQuestionSet = activeAttempt[0].question_set || [];
+      
+      // Strip correct answers and explanations for exam room security
+      structuredQuestions = fullQuestionSet.map((q, idx) => {
+        const { correct_ansid, explanation, ...clientSafeQuestion } = q;
+        
+        // Shuffle options if enabled
+        let qOpts = clientSafeQuestion.options || [];
+        if (quiz.shuffle_options) {
+          qOpts = [...qOpts].sort(() => Math.random() - 0.5);
+        }
+        
+        return {
+          ...clientSafeQuestion,
+          sn: idx + 1,
+          options: qOpts
+        };
+      });
+
+      if (quiz.shuffle_questions) {
+        structuredQuestions = structuredQuestions.sort(() => Math.random() - 0.5);
+      }
+    } else {
+      // If no active attempt started, do not return questions (Start Screen view)
+      structuredQuestions = [];
+    }
 
     return NextResponse.json({
       quiz,
@@ -60,157 +124,39 @@ export async function GET(req, { params }) {
 }
 
 export async function POST(req, { params }) {
+  // Legacy handler fallback (redirect/rewrite logic to attempts endpoint)
   try {
+    const { eid } = await params;
     const session = await getSession();
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (session.isSuspended) {
-      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator." }, { status: 403 });
-    }
 
-    const { eid } = await params;
-    const { answers } = await req.json(); // Map of { qid: selectedOptionId }
     const email = session.email;
     const instId = session.institution_id;
 
-    // Fetch quiz details and verify tenant isolation
-    const quizResult = await sql`
-      SELECT total, sahi, wrong, title, tag, email, institution_id FROM "quiz" WHERE eid = ${eid}
-    `;
-    if (quizResult.length === 0) {
-      return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
-    }
-    const quiz = quizResult[0];
-    if (quiz.institution_id !== instId) {
-      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
-    }
-
-    const sahiMark = quiz.sahi;
-    const wrongMark = quiz.wrong;
-
-    // Fetch correct answers
-    const questions = await sql`
-      SELECT qid FROM "questions" WHERE eid = ${eid}
-    `;
-    const qids = questions.map(q => q.qid);
-    
-    let correctAnswers = [];
-    if (qids.length > 0) {
-      correctAnswers = await sql`
-        SELECT qid, ansid FROM "answer" WHERE qid IN (${qids})
-      `;
-    }
-
-    let score = 0;
-    let sahiCount = 0;
-    let wrongCount = 0;
-
-    correctAnswers.forEach(correct => {
-      const selected = answers[correct.qid];
-      if (selected) {
-        if (selected === correct.ansid) {
-          score += sahiMark;
-          sahiCount++;
-        } else {
-          score -= wrongMark;
-          wrongCount++;
-        }
-      }
-    });
-
-    // Check if history already exists
-    const existingHistory = await sql`
-      SELECT email, score FROM "history" WHERE email = ${email} AND eid = ${eid}
+    // Check if there is an in-progress attempt we can submit
+    const activeAttempt = await sql`
+      SELECT id FROM "quiz_attempt"
+      WHERE eid = ${eid} AND email = ${email} AND status = 'IN_PROGRESS'
+      LIMIT 1
     `;
 
-    let isBestAttempt = false;
-
-    if (existingHistory.length > 0) {
-      const prevScore = existingHistory[0].score;
-      if (score > prevScore) {
-        isBestAttempt = true;
-        await sql`
-          UPDATE "history" 
-          SET score = ${score}, sahi = ${sahiCount}, wrong = ${wrongCount}, date = NOW()
-          WHERE email = ${email} AND eid = ${eid}
-        `;
-      }
-    } else {
-      isBestAttempt = true;
-      await sql`
-        INSERT INTO "history" (email, eid, score, level, sahi, wrong, date)
-        VALUES (${email}, ${eid}, ${score}, ${quiz.total}, ${sahiCount}, ${wrongCount}, NOW())
-      `;
+    if (activeAttempt.length === 0) {
+      return NextResponse.json({ error: 'No active attempt found to submit.' }, { status: 400 });
     }
 
-    if (isBestAttempt) {
-      // Recalculate global rank
-      const sumResult = await sql`
-        SELECT SUM(score) as total_score FROM "history" WHERE email = ${email}
-      `;
-      const totalScore = parseInt(sumResult[0]?.total_score || '0');
+    // Rewrite this post call internally to submit attempt
+    const body = await req.json();
+    const mockReq = {
+      json: async () => body
+    };
 
-      const existingRank = await sql`
-        SELECT email FROM "rank" WHERE email = ${email}
-      `;
-
-      if (existingRank.length > 0) {
-        await sql`
-          UPDATE "rank" SET score = ${totalScore}, time = NOW() WHERE email = ${email}
-        `;
-      } else {
-        await sql`
-          INSERT INTO "rank" (email, score, time) VALUES (${email}, ${totalScore}, NOW())
-        `;
-      }
-    }
-
-    // Calculate student's dynamic rank on this quiz within their institution
-    const allAttempts = await sql`
-      SELECT h.email, h.score, h.date 
-      FROM "history" h
-      JOIN "user" u ON h.email = u.email
-      WHERE h.eid = ${eid} AND u.institution_id = ${instId}
-      ORDER BY h.score DESC, h.date ASC
-    `;
-    
-    let rank = 1;
-    let rankIndex = 1;
-    let prevAttemptScore = null;
-    let prevAttemptDate = null;
-    
-    for (let i = 0; i < allAttempts.length; i++) {
-      const att = allAttempts[i];
-      if (prevAttemptScore !== null) {
-        if (att.score !== prevAttemptScore || new Date(att.date).getTime() !== new Date(prevAttemptDate).getTime()) {
-          rankIndex = i + 1;
-        }
-      }
-      if (att.email === email) {
-        rank = rankIndex;
-        break;
-      }
-      prevAttemptScore = att.score;
-      prevAttemptDate = att.date;
-    }
-
-    const teacherName = quiz.email ? quiz.email.split('@')[0].replace(/^\w/, c => c.toUpperCase()) : 'Teacher';
-
-    return NextResponse.json({
-      success: true,
-      score,
-      sahi: sahiCount,
-      wrong: wrongCount,
-      total: quiz.total,
-      title: quiz.title,
-      tag: quiz.tag,
-      teacherName,
-      rank,
-      totalStudents: allAttempts.length
-    });
+    const submitUrl = new URL(`/api/student/attempts/${activeAttempt[0].id}`, 'http://localhost');
+    const { POST: submitHandler } = await import('../../student/attempts/[id]/route.js');
+    return await submitHandler(mockReq, { params: { id: activeAttempt[0].id } });
   } catch (error) {
-    console.error('Quiz submission error:', error);
+    console.error('Legacy submission redirect error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
