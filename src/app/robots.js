@@ -8,7 +8,9 @@ export default function robots() {
         '/teacher/',
         '/student/',
         '/quiz/',
-        '/api/'
+        '/superadmin/',
+        '/api/',
+        '/debug/'
       ],
     },
     sitemap: 'https://e-examiner.vercel.app/sitemap.xml',
