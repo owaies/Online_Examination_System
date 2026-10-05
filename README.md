@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Online Examination System
 
-## Getting Started
+A Next.js-based online examination platform for creating, administering, and taking timed quizzes.
 
-First, run the development server:
+## Core capabilities
+
+- Student-facing examination workflow
+- Admin-oriented question and user management
+- Quiz submission and result tracking
+- JWT authentication
+- Password hashing with bcrypt
+- PostgreSQL persistence
+- Responsive React interface
+
+## Technology stack
+
+- Next.js 16
+- React 19
+- PostgreSQL
+- JSON Web Tokens
+- bcryptjs
+- Framer Motion
+- Tailwind CSS
+
+## Local development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Create the required environment variables before starting the application. Never commit database credentials or JWT secrets.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Production checks
 
-## Learn More
+Run the production build before deployment:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Lint the project with:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run lint
+```
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Application routes and UI live under the Next.js app directory. Authentication, quiz logic, and persistence code are kept alongside the application services used by the examination workflow.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Security notes
+
+Keep authentication secrets outside source control and use a strong production JWT secret. Validate all user-controlled examination data at the API boundary and preserve authorization checks for administrative operations.
