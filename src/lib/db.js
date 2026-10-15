@@ -8,16 +8,24 @@ function getClient() {
     const user = process.env.DB_USER || 'placeholder';
     const pass = process.env.DB_PASS || 'placeholder';
     const host = process.env.DB_HOST || 'localhost';
-    const port = process.env.DB_PORT || '5432';
+    const port = Number.parseInt(process.env.DB_PORT || '5432', 10);
     const name = process.env.DB_NAME || 'placeholder';
-    
+
+    const ssl = process.env.DB_SSL === 'true'
+      ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+      : process.env.DB_SSL === 'false'
+        ? false
+        : process.env.NODE_ENV === 'production'
+          ? { rejectUnauthorized: true }
+          : false;
+
     client = postgres({
-      host: host,
-      port: parseInt(port),
+      host,
+      port,
       database: name,
       username: user,
       password: pass,
-      ssl: { rejectUnauthorized: false },
+      ssl,
       max: process.env.NODE_ENV === 'production' ? 10 : 5,
       idle_timeout: 20
     });
@@ -41,4 +49,3 @@ const sql = new Proxy(() => {}, {
 });
 
 export default sql;
-
