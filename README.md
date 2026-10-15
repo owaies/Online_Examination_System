@@ -40,6 +40,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Create the required environment variables before starting the application. Never commit database credentials or JWT secrets.
 
+### PostgreSQL TLS
+
+In production, the database client verifies the PostgreSQL server certificate by default. Use `DB_SSL=true` to explicitly enable TLS in development or another environment. Set `DB_SSL=false` only when the database endpoint does not support TLS. If a trusted development database uses a private certificate authority, configure the runtime to trust that CA rather than disabling certificate verification. The optional `DB_SSL_REJECT_UNAUTHORIZED=false` override disables certificate verification and should not be used in production.
+
 ## Production checks
 
 Run the production build before deployment:
