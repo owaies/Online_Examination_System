@@ -1,13 +1,4 @@
-import postgres from 'postgres';
-
-const sql = postgres({
-  host: "aws-0-ap-northeast-1.pooler.supabase.com",
-  database: "postgres",
-  username: "postgres.tpqvmupdvxqloykqkpwj",
-  password: "Owaies@2026",
-  port: 6543,
-  ssl: { rejectUnauthorized: false }
-});
+import sql from './db-connection.mjs';
 
 async function main() {
   try {
