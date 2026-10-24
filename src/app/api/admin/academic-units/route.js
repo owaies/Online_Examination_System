@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 
 // Check if parentId would cause circular dependency if linked to unitId
 async function checkCircular(parentId, unitId) {
@@ -97,7 +98,7 @@ export async function POST(req) {
         // Map temporary IDs to generated database IDs
         const idMap = {};
         for (const u of presetUnits) {
-          const newId = Math.random().toString(36).substring(2, 15);
+          const newId = randomUUID();
           idMap[u.tempId] = newId;
 
           // Find correct parent ID (could be another newly created preset unit, or existing)
