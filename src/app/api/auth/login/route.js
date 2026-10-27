@@ -4,18 +4,36 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 
+const EMAIL_PATTERN = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+
 export async function POST(req) {
   try {
-    const { email, password, role } = await req.json();
-    
-    if (!email || !password || !role) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    let payload;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return NextResponse.json({ error: 'Invalid login payload' }, { status: 400 });
+    }
+
+    const { email, password, role } = payload;
+    if (typeof email !== 'string' || typeof password !== 'string' || typeof role !== 'string' ||
+        !email.trim() || !password || !role) {
+      return NextResponse.json({ error: 'Email, password, and role are required' }, { status: 400 });
+    }
+
+    const emailClean = email.trim().toLowerCase();
+    if (emailClean.length > 254 || !EMAIL_PATTERN.test(emailClean) ||
+        Buffer.byteLength(password, 'utf8') > 72 ||
+        !['student', 'teacher', 'admin'].includes(role)) {
+      return NextResponse.json({ error: 'Login details are invalid or exceed the allowed limits' }, { status: 400 });
+    }
+
     let dbUser = null;
     let name = '';
     let sessionRole = role;
-    const emailClean = email.trim().toLowerCase();
     
     if (role === 'student') {
       const result = await sql`
