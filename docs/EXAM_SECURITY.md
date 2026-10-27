@@ -21,3 +21,8 @@ Review authentication behavior, environment variables, and production API respon
 - Confirm a valid payload still creates a student with a normalized lowercase email.
 - If an institution code is supplied, verify non-text or overlong values are rejected before the institution lookup.
 
+## Login boundary checks
+- Send malformed JSON, `null`, an array, or a non-object body; expect HTTP 400 rather than an internal-server error.
+- Try missing or non-string email, password, and role values; expect HTTP 400 before database access.
+- Verify malformed or overlong email values, passwords exceeding 72 UTF-8 bytes, and unsupported roles are rejected.
+- Confirm valid student, teacher, and administrator logins still follow their existing role-specific database lookup and session behavior.
