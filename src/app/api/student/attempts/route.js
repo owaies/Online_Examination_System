@@ -113,7 +113,7 @@ export async function POST(req) {
     const activeAttempt = await sql`
       SELECT id, attempt_number, started_at, answers
       FROM "quiz_attempt"
-      WHERE eid = ${eid} AND email = ${email} AND status = 'IN_PROGRESS'
+      WHERE eid = ${eid} AND email = ${email} AND institution_id = ${instId} AND status = 'IN_PROGRESS'
       LIMIT 1
     `;
 
