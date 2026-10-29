@@ -47,7 +47,9 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 
 const ssl = process.env.DB_SSL?.toLowerCase() === 'false'
   ? false
-  : { rejectUnauthorized: false };
+  : {
+      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED?.toLowerCase() !== 'false',
+    };
 
 const sql = postgres({
   host: process.env.DB_HOST,
