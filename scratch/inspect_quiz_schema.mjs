@@ -1,29 +1,4 @@
-import postgres from 'postgres';
-import fs from 'fs';
-import path from 'path';
-
-// Load env
-const envPath = path.resolve('.env.local');
-if (fs.existsSync(envPath)) {
-  const content = fs.readFileSync(envPath, 'utf8');
-  content.split('\n').forEach(line => {
-    const parts = line.split('=');
-    if (parts.length >= 2) {
-      const key = parts[0].trim();
-      const val = parts.slice(1).join('=').trim();
-      if (key) process.env[key] = val;
-    }
-  });
-}
-
-const sql = postgres({
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  username: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  port: parseInt(process.env.DB_PORT),
-  ssl: { rejectUnauthorized: false }
-});
+import sql from './db-connection.mjs';
 
 async function main() {
   try {
@@ -50,8 +25,9 @@ async function main() {
     }
   } catch (err) {
     console.error(err);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    await sql.end();
   }
 }
 
