@@ -1,24 +1,19 @@
-import postgres from 'postgres';
-
-const sql = postgres({
-  host: "aws-0-ap-northeast-1.pooler.supabase.com",
-  database: "postgres",
-  username: "postgres.tpqvmupdvxqloykqkpwj",
-  password: "Owaies@2026",
-  port: 6543,
-  ssl: { rejectUnauthorized: false }
-});
+import sql from './db-connection.mjs';
 
 async function main() {
   try {
-    const admins = await sql`
-      SELECT email, password, role FROM "admin"
+    const counts = await sql`
+      SELECT role, COUNT(*)::int AS count
+      FROM "admin"
+      GROUP BY role
+      ORDER BY role
     `;
-    console.log("Admins table content:", admins);
+    console.log('Administrator account counts by role (no account details or passwords):', counts);
   } catch (error) {
-    console.error("Error:", error);
+    console.error('Could not inspect administrator account counts:', error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    await sql.end();
   }
 }
 
