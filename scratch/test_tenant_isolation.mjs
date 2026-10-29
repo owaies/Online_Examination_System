@@ -1,4 +1,5 @@
 import sql from './db-connection.mjs';
+import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 
 const mockTenantId = `test-tenant-${randomUUID()}`;
@@ -41,9 +42,10 @@ async function main() {
       INSERT INTO "institution" (id, name, institution_code, institution_type, email, status)
       VALUES (${mockTenantId}, 'Test Tenant School', ${mockTenantId.toUpperCase()}, 'School', ${mockInstitutionEmail}, 'active')
     `;
+    const mockPasswordHash = await bcrypt.hash('temporary-tenant-test-password', 10);
     await sql`
       INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
-      VALUES ('Mock Student', 'M', 'Test Tenant School', ${mockStudentEmail}, ${mockMobile}, 'test-only-password', ${mockTenantId})
+      VALUES ('Mock Student', 'M', 'Test Tenant School', ${mockStudentEmail}, ${mockMobile}, ${mockPasswordHash}, ${mockTenantId})
     `;
 
     const mockQuizzes = await sql`
