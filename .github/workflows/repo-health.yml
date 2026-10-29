@@ -20,6 +20,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check database maintenance script syntax
+        if: ${{ hashFiles('scratch/**/*.mjs') != '' }}
+        shell: bash
+        run: find scratch -type f -name '*.mjs' -print0 | xargs -0 -n1 node --check
+
       - name: Validate Node project
         if: ${{ hashFiles('package.json') != '' }}
         shell: bash
