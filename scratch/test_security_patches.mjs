@@ -1,60 +1,55 @@
-import postgres from 'postgres';
+import sql from './db-connection.mjs';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 
-const sql = postgres({
-  host: "aws-0-ap-northeast-1.pooler.supabase.com",
-  database: "postgres",
-  username: "postgres.tpqvmupdvxqloykqkpwj",
-  password: "Owaies@2026",
-  port: 6543,
-  ssl: { rejectUnauthorized: false }
-});
+const mockEmail = `mock-test-${randomUUID()}@tenant-test.invalid`;
+const mockMobile = Number(`9${Date.now().toString().slice(-9)}`);
+const plaintextPass = 'temporary-test-password-123';
+
+function check(label, passed) {
+  console.log(`${label}: ${passed ? 'PASS' : 'FAIL'}`);
+  if (!passed) process.exitCode = 1;
+}
 
 async function main() {
   try {
-    console.log("=== RUNNING SECURITY PATCH VERIFICATION ===");
+    console.log('=== RUNNING SECURITY PATCH VERIFICATION ===');
 
-    // TEST 1: Check that plaintext superpassword fails (or does not exist as plaintext in DB)
     const superPlaintext = await sql`
       SELECT email FROM "admin" WHERE role = 'super_admin' AND password = 'superpassword'
     `;
-    console.log("TEST 1 (No plaintext superpassword in DB):", superPlaintext.length === 0 ? "PASS" : "FAIL");
+    check('No plaintext legacy superpassword', superPlaintext.length === 0);
 
-    // TEST 2: Verify all password records in user and admin tables are securely hashed (60 characters, starts with $2)
     const plaintextStudents = await sql`
-      SELECT email, password FROM "user" WHERE LENGTH(password) != 60 OR password NOT LIKE '$2%'
+      SELECT email FROM "user" WHERE LENGTH(password) != 60 OR password NOT LIKE '$2%'
     `;
     const plaintextAdmins = await sql`
-      SELECT email, password FROM "admin" WHERE LENGTH(password) != 60 OR password NOT LIKE '$2%'
+      SELECT email FROM "admin" WHERE LENGTH(password) != 60 OR password NOT LIKE '$2%'
     `;
-    console.log("TEST 2 (No plaintext passwords in user table):", plaintextStudents.length === 0 ? "PASS" : "FAIL");
-    console.log("TEST 3 (No plaintext passwords in admin table):", plaintextAdmins.length === 0 ? "PASS" : "FAIL");
+    check('All student passwords are bcrypt hashes', plaintextStudents.length === 0);
+    check('All admin passwords are bcrypt hashes', plaintextAdmins.length === 0);
 
-    // TEST 4: Create a mock user, check hashing on creation
-    const mockEmail = 'mock-test-' + Math.random().toString(36).substring(2, 7) + '@domain.com';
-    const plaintextPass = 'my-super-secret-password-123';
     const hashedPass = await bcrypt.hash(plaintextPass, 10);
-    
-    // Insert mock user
     await sql`
       INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
-      VALUES ('Mock Verification User', 'M', 'Verification College', ${mockEmail}, 7619329863, ${hashedPass}, 'demo-institute')
+      VALUES ('Mock Verification User', 'M', 'Verification College', ${mockEmail}, ${mockMobile}, ${hashedPass}, 'demo-institute')
     `;
-
     const fetchedMock = await sql`
       SELECT password FROM "user" WHERE email = ${mockEmail}
     `;
-    const isMatch = await bcrypt.compare(plaintextPass, fetchedMock[0].password);
-    console.log("TEST 4 (Bcrypt hashing integrity test):", isMatch ? "PASS" : "FAIL");
-
-    // Clean up mock user
-    await sql`DELETE FROM "user" WHERE email = ${mockEmail}`;
-    console.log("Cleanup mock user finished.");
-
+    const isMatch = fetchedMock.length === 1 && await bcrypt.compare(plaintextPass, fetchedMock[0].password);
+    check('Bcrypt hashing round-trip succeeds', isMatch);
   } catch (error) {
-    console.error("Verification script failed:", error);
+    console.error('Security patch verification failed:', error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    try {
+      await sql`DELETE FROM "user" WHERE email = ${mockEmail}`;
+    } catch (cleanupError) {
+      console.error('Could not clean up verification user:', cleanupError);
+      process.exitCode = 1;
+    }
+    await sql.end();
   }
 }
 

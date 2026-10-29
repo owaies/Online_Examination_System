@@ -1,77 +1,75 @@
-import postgres from 'postgres';
+import sql from './db-connection.mjs';
+import { randomUUID } from 'node:crypto';
 
-const sql = postgres({
-  host: "aws-0-ap-northeast-1.pooler.supabase.com",
-  database: "postgres",
-  username: "postgres.tpqvmupdvxqloykqkpwj",
-  password: "Owaies@2026",
-  port: 6543,
-  ssl: { rejectUnauthorized: false }
-});
+const mockTenantId = `test-tenant-${randomUUID()}`;
+const mockStudentEmail = `student-${randomUUID()}@tenant-test.invalid`;
+const mockInstitutionEmail = `institution-${randomUUID()}@tenant-test.invalid`;
+const mockMobile = Number(`9${Date.now().toString().slice(-9)}`);
+
+function check(label, passed) {
+  console.log(`${label}: ${passed ? 'PASS' : 'FAIL'}`);
+  if (!passed) process.exitCode = 1;
+}
 
 async function main() {
   try {
-    console.log("=== RUNNING TENANT ISOLATION TESTS ===");
+    console.log('=== RUNNING TENANT ISOLATION SMOKE CHECKS ===');
 
-    // 1. Verify Superadmin exists and has null institution
     const superAdmin = await sql`
       SELECT email, role, institution_id FROM "admin" WHERE role = 'super_admin'
     `;
-    console.log("TEST 1 (Superadmin check):", superAdmin.length === 1 && superAdmin[0].institution_id === null ? "PASS" : "FAIL");
+    check('Superadmin has no institution', superAdmin.length === 1 && superAdmin[0].institution_id === null);
 
-    // 2. Verify all existing admins, students, and quizzes belong to 'demo-institute'
     const migratedAdmins = await sql`
-      SELECT COUNT(*) as count FROM "admin" WHERE role != 'super_admin' AND institution_id != 'demo-institute'
+      SELECT COUNT(*) AS count FROM "admin"
+      WHERE role != 'super_admin' AND institution_id IS DISTINCT FROM 'demo-institute'
     `;
     const migratedUsers = await sql`
-      SELECT COUNT(*) as count FROM "user" WHERE institution_id != 'demo-institute'
+      SELECT COUNT(*) AS count FROM "user"
+      WHERE institution_id IS DISTINCT FROM 'demo-institute'
     `;
     const migratedQuizzes = await sql`
-      SELECT COUNT(*) as count FROM "quiz" WHERE institution_id != 'demo-institute'
+      SELECT COUNT(*) AS count FROM "quiz"
+      WHERE institution_id IS DISTINCT FROM 'demo-institute'
     `;
-    console.log("TEST 2 (Migrated Admins check):", parseInt(migratedAdmins[0].count) === 0 ? "PASS" : "FAIL");
-    console.log("TEST 3 (Migrated Users check):", parseInt(migratedUsers[0].count) === 0 ? "PASS" : "FAIL");
-    console.log("TEST 4 (Migrated Quizzes check):", parseInt(migratedQuizzes[0].count) === 0 ? "PASS" : "FAIL");
+    check('Non-superadmin records use the demo institution', Number(migratedAdmins[0].count) === 0);
+    check('User records use the demo institution', Number(migratedUsers[0].count) === 0);
+    check('Quiz records use the demo institution', Number(migratedQuizzes[0].count) === 0);
 
-    // 3. Create a mock tenant and test isolation
-    const mockTenantId = 'test-tenant-' + Math.random().toString(36).substring(2, 7);
-    console.log(`\nCreating mock tenant: ${mockTenantId}...`);
+    console.log(`Creating isolated test tenant ${mockTenantId}...`);
     await sql`
       INSERT INTO "institution" (id, name, institution_code, institution_type, email, status)
-      VALUES (${mockTenantId}, 'Test Tenant School', ${mockTenantId.toUpperCase()}, 'School', 'test@tenant.com', 'active')
+      VALUES (${mockTenantId}, 'Test Tenant School', ${mockTenantId.toUpperCase()}, 'School', ${mockInstitutionEmail}, 'active')
     `;
-
-    // 4. Create a student under mock tenant
-    const mockStudentEmail = 'student@' + mockTenantId + '.com';
     await sql`
       INSERT INTO "user" (name, gender, college, email, mob, password, institution_id)
-      VALUES ('Mock Student', 'M', 'Test Tenant School', ${mockStudentEmail}, 7619329863, 'password', ${mockTenantId})
+      VALUES ('Mock Student', 'M', 'Test Tenant School', ${mockStudentEmail}, ${mockMobile}, 'test-only-password', ${mockTenantId})
     `;
 
-    // 5. Query quizzes for the mock tenant (should be 0, since no quizzes created yet)
     const mockQuizzes = await sql`
       SELECT * FROM "quiz" WHERE institution_id = ${mockTenantId}
     `;
-    console.log("TEST 5 (Mock tenant quizzes isolated):", mockQuizzes.length === 0 ? "PASS" : "FAIL");
+    check('New tenant has no inherited quizzes', mockQuizzes.length === 0);
 
-    // 6. Query rankings for mock tenant (should only include the mock student)
     const mockRankings = await sql`
       SELECT u.email FROM "user" u
       LEFT JOIN "rank" r ON r.email = u.email
       WHERE u.institution_id = ${mockTenantId}
     `;
-    console.log("TEST 6 (Mock rankings isolated):", mockRankings.length === 1 && mockRankings[0].email === mockStudentEmail ? "PASS" : "FAIL");
-
-    // Clean up mock data
-    console.log("\nCleaning up mock data...");
-    await sql`DELETE FROM "user" WHERE institution_id = ${mockTenantId}`;
-    await sql`DELETE FROM "institution" WHERE id = ${mockTenantId}`;
-    console.log("Cleanup finished.");
-
+    check('Tenant ranking query contains only its test student',
+      mockRankings.length === 1 && mockRankings[0].email === mockStudentEmail);
   } catch (error) {
-    console.error("Test execution failed:", error);
+    console.error('Tenant isolation smoke checks failed:', error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    try {
+      await sql`DELETE FROM "user" WHERE institution_id = ${mockTenantId}`;
+      await sql`DELETE FROM "institution" WHERE id = ${mockTenantId}`;
+    } catch (cleanupError) {
+      console.error('Could not clean up tenant test data:', cleanupError);
+      process.exitCode = 1;
+    }
+    await sql.end();
   }
 }
 
