@@ -118,10 +118,11 @@ async function main() {
     await sql`CREATE INDEX IF NOT EXISTS idx_questions_status_difficulty ON "questions" (status, difficulty)`;
 
     console.log("PHASE 4 DATABASE MIGRATIONS COMPLETED SUCCESSFULLY!");
-    process.exit(0);
   } catch (error) {
     console.error("Migration failed:", error);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await sql.end();
   }
 }
 

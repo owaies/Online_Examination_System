@@ -78,8 +78,9 @@ async function main() {
     console.log("Migration completed successfully!");
   } catch (error) {
     console.error("Migration failed:", error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    await sql.end();
   }
 }
 

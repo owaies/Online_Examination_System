@@ -220,8 +220,9 @@ async function main() {
     console.log("PHASE 2 DB MIGRATIONS COMPLETED SUCCESSFULLY!");
   } catch (error) {
     console.error("Migration execution failed:", error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    await sql.end();
   }
 }
 
