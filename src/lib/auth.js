@@ -30,31 +30,35 @@ export async function getSession() {
   const decoded = verifyToken(token);
   if (!decoded) return null;
 
-  // Verify if institution is suspended
+  // Authorization checks must fail closed when their database lookup fails.
   if (decoded.institution_id) {
     try {
       const inst = await sql`
         SELECT status FROM "institution" WHERE id = ${decoded.institution_id}
       `;
-      if (inst.length > 0 && inst[0].status === 'suspended') {
+      if (inst.length === 0) return null;
+      if (inst[0].status === 'suspended') {
         return { ...decoded, isSuspended: true };
       }
     } catch (e) {
       console.error("Failed to check institution status in auth:", e);
+      return null;
     }
   }
 
-  // Verify if password change is required for admin/teacher
-  if (decoded.role === 'admin' || decoded.role === 'teacher') {
+  // Recheck privileged account state on every session read, including super admins.
+  if (['admin', 'teacher', 'super_admin'].includes(decoded.role)) {
     try {
       const adminUser = await sql`
         SELECT password_change_required FROM "admin" WHERE email = ${decoded.email}
       `;
-      if (adminUser.length > 0 && adminUser[0].password_change_required) {
+      if (adminUser.length === 0) return null;
+      if (adminUser[0].password_change_required) {
         return { ...decoded, passwordChangeRequired: true };
       }
     } catch (e) {
       console.error("Failed to check password_change_required in auth:", e);
+      return null;
     }
   }
 
