@@ -36,8 +36,7 @@ export async function getSession() {
       const inst = await sql`
         SELECT status FROM "institution" WHERE id = ${decoded.institution_id}
       `;
-      if (inst.length === 0) return null;
-      if (inst[0].status === 'suspended') {
+      if (inst.length > 0 && inst[0].status === 'suspended') {
         return { ...decoded, isSuspended: true };
       }
     } catch (e) {
