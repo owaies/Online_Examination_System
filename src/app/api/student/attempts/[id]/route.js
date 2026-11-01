@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { normalizeAttemptAnswers } from '@/lib/attempt-validation.mjs';
 
 export async function PUT(req, { params }) {
   try {
@@ -8,9 +9,19 @@ export async function PUT(req, { params }) {
     if (!session || session.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.isSuspended) {
+      return NextResponse.json({ error: "Your institution's E-Examiner access is currently suspended." }, { status: 403 });
+    }
 
     const { id } = await params;
-    const { answers } = await req.json(); // Map of { qid: selectedOptionId }
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Answers must be a JSON object.' }, { status: 400 });
+    }
+    const answers = normalizeAttemptAnswers(body.answers);
+    if (!answers) {
+      return NextResponse.json({ error: 'Answers must contain at most 1000 valid question selections.' }, { status: 400 });
+    }
     const email = session.email;
     const instId = session.institution_id;
 
@@ -28,12 +39,20 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: 'Cannot save answers on a submitted/expired attempt' }, { status: 400 });
     }
 
-    // Save/update answers JSONB and last active time
-    await sql`
+    // Recheck ownership and state in the write itself so a concurrent
+    // submission or institution change cannot be overwritten by this autosave.
+    const saved = await sql`
       UPDATE "quiz_attempt"
       SET answers = ${JSON.stringify(answers)}, last_active_at = NOW()
       WHERE id = ${id}
+        AND email = ${email}
+        AND institution_id = ${instId}
+        AND status = 'IN_PROGRESS'
+      RETURNING id
     `;
+    if (saved.length === 0) {
+      return NextResponse.json({ error: 'Attempt is no longer available for autosave.' }, { status: 409 });
+    }
 
     return NextResponse.json({ success: true, message: 'Answers autosaved successfully.' });
   } catch (error) {
