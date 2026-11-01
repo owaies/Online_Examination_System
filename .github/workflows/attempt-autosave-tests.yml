@@ -1,0 +1,29 @@
+name: Attempt autosave validation tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/attempt-validation.mjs"
+      - "scratch/test_attempt_validation.mjs"
+      - ".github/workflows/attempt-autosave-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/attempt-validation.mjs"
+      - "scratch/test_attempt_validation.mjs"
+      - ".github/workflows/attempt-autosave-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run autosave payload validation tests
+        run: node --test scratch/test_attempt_validation.mjs
