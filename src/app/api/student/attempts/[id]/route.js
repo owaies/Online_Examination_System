@@ -131,9 +131,9 @@ export async function POST(req, { params }) {
     const submissionStatus = autoSubmit ? 'AUTO_SUBMITTED' : 'SUBMITTED';
 
     // 5. Update attempt record
-    await sql`
+    const submitted = await sql`
       UPDATE "quiz_attempt"
-      SET 
+      SET
         submitted_at = NOW(),
         status = ${submissionStatus},
         score = ${score},
@@ -141,7 +141,17 @@ export async function POST(req, { params }) {
         wrong = ${wrongCount},
         time_taken = ${timeTaken}
       WHERE id = ${id}
+        AND email = ${email}
+        AND institution_id = ${instId}
+        AND status = 'IN_PROGRESS'
+      RETURNING id
     `;
+    if (submitted.length === 0) {
+      return NextResponse.json(
+        { error: 'Attempt is no longer available for submission.' },
+        { status: 409 }
+      );
+    }
 
     // 6. Fetch settings to determine Sync rule
     let settingsResult = await sql`
