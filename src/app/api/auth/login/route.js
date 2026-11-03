@@ -3,6 +3,7 @@ import { signToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { getInstitutionAccessState } from '@/lib/institution-session.mjs';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -93,9 +94,12 @@ export async function POST(req) {
       const instResult = await sql`
         SELECT status FROM "institution" WHERE id = ${dbUser.institution_id}
       `;
-      if (instResult.length > 0 && instResult[0].status === 'suspended') {
+      const institutionState = getInstitutionAccessState(instResult);
+      if (institutionState !== 'active') {
         return NextResponse.json({
-          error: "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator."
+          error: institutionState === 'suspended'
+            ? "Your institution's E-Examiner access is currently suspended. Please contact your institution administrator."
+            : "The linked institution could not be found. Please contact your institution administrator."
         }, { status: 403 });
       }
     }
