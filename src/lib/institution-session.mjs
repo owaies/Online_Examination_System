@@ -3,12 +3,14 @@ export function getInstitutionAccessState(rows) {
     return 'missing';
   }
 
-  return rows[0].status === 'suspended' ? 'suspended' : 'active';
+  if (rows[0].status === 'active') return 'active';
+  if (rows[0].status === 'suspended') return 'suspended';
+  return 'inactive';
 }
 
 export function resolveInstitutionSession(decoded, rows) {
   const state = getInstitutionAccessState(rows);
-  if (state === 'missing') return null;
   if (state === 'suspended') return { ...decoded, isSuspended: true };
+  if (state !== 'active') return null;
   return decoded;
 }
