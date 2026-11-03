@@ -32,6 +32,9 @@ jobs:
           npm install --ignore-scripts
           node -e "const p=require('./package.json'); const s=p.scripts||{}; if(s.lint) require('child_process').execFileSync('npm',['run','lint'],{stdio:'inherit'}); if(s.build) require('child_process').execFileSync('npm',['run','build'],{stdio:'inherit'});"
 
+      - name: Run institution session access tests
+        run: node --test src/lib/institution-session.test.mjs
+
       - name: Validate Python sources
         if: ${{ hashFiles('**/*.py') != '' }}
         shell: bash
