@@ -22,3 +22,12 @@ test('suspended institutions are surfaced to the caller', () => {
   assert.equal(getInstitutionAccessState(rows), 'suspended');
   assert.deepEqual(resolveInstitutionSession(decoded, rows), { ...decoded, isSuspended: true });
 });
+
+
+test('unknown and non-active institution states invalidate sessions', () => {
+  for (const state of ['pending', 'inactive', 'disabled', '', null, undefined]) {
+    const rows = [{ status: state }];
+    assert.equal(getInstitutionAccessState(rows), 'inactive');
+    assert.equal(resolveInstitutionSession(decoded, rows), null);
+  }
+});
