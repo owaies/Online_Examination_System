@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import sql from './db';
+import { resolveInstitutionSession } from './institution-session.mjs';
 
 function getSecretKey() {
   const secret = process.env.JWT_SECRET;
@@ -36,9 +37,9 @@ export async function getSession() {
       const inst = await sql`
         SELECT status FROM "institution" WHERE id = ${decoded.institution_id}
       `;
-      if (inst.length > 0 && inst[0].status === 'suspended') {
-        return { ...decoded, isSuspended: true };
-      }
+      const institutionSession = resolveInstitutionSession(decoded, inst);
+      if (!institutionSession) return null;
+      if (institutionSession.isSuspended) return institutionSession;
     } catch (e) {
       console.error("Failed to check institution status in auth:", e);
       return null;
