@@ -11,3 +11,11 @@
 
 9. Send two submission requests for the same in-progress attempt concurrently; confirm only one request transitions the attempt and the other receives HTTP 409.
 10. Confirm the submission update remains scoped to the authenticated student's email and institution, even if an attempt identifier is supplied from another account.
+
+
+## Institution status regression
+
+- Confirm a session is rejected when the institution record is missing.
+- Confirm only an institution with status `active` can resolve a normal session.
+- Confirm `suspended` remains distinguishable for the existing suspension flow.
+- Confirm pending, inactive, disabled, empty, and unknown status values do not grant access.
