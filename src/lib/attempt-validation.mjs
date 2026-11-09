@@ -32,3 +32,19 @@ export function normalizeAttemptAnswers(value) {
 
   return value;
 }
+
+
+export function normalizeAttemptSubmission(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  if (
+    Object.hasOwn(value, "autoSubmit") &&
+    typeof value.autoSubmit !== "boolean"
+  ) {
+    return null;
+  }
+
+  return { autoSubmit: value.autoSubmit === true };
+}
