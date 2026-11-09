@@ -1,7 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
-import { normalizeAttemptAnswers } from '@/lib/attempt-validation.mjs';
+import { normalizeAttemptAnswers, normalizeAttemptSubmission } from '@/lib/attempt-validation.mjs';
 
 export async function PUT(req, { params }) {
   try {
@@ -72,8 +72,15 @@ export async function POST(req, { params }) {
     }
 
     const { id } = await params;
-    const body = await req.json();
-    const { autoSubmit } = body;
+    const body = await req.json().catch(() => null);
+    const submission = normalizeAttemptSubmission(body);
+    if (!submission) {
+      return NextResponse.json(
+        { error: 'Submission payload must be an object with an optional boolean autoSubmit field.' },
+        { status: 400 },
+      );
+    }
+    const { autoSubmit } = submission;
     const email = session.email;
     const instId = session.institution_id;
 
