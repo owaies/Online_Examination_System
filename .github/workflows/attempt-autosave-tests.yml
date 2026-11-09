@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "src/lib/attempt-validation.mjs"
+      - "src/app/api/student/attempts/[id]/route.js"
       - "scratch/test_attempt_validation.mjs"
       - ".github/workflows/attempt-autosave-tests.yml"
   pull_request:
     branches: [main]
     paths:
       - "src/lib/attempt-validation.mjs"
+      - "src/app/api/student/attempts/[id]/route.js"
       - "scratch/test_attempt_validation.mjs"
       - ".github/workflows/attempt-autosave-tests.yml"
   workflow_dispatch:
