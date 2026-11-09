@@ -19,3 +19,11 @@
 - Confirm only an institution with status `active` can resolve a normal session.
 - Confirm `suspended` remains distinguishable for the existing suspension flow.
 - Confirm pending, inactive, disabled, empty, and unknown status values do not grant access.
+
+
+## Attempt submission payload
+
+- Submit a valid attempt with `autoSubmit: false` and confirm it is recorded as a normal submission.
+- Submit a valid attempt with `autoSubmit: true` and confirm it follows the automatic-submission status path.
+- Send malformed JSON, a non-object JSON value, or a non-boolean `autoSubmit` value; confirm the endpoint returns HTTP 400 without changing the attempt.
+- Omit `autoSubmit` and confirm the request retains the normal-submission default.
