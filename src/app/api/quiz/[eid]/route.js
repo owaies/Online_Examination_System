@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { shuffleCopy } from '@/lib/shuffle.mjs';
 
 export async function GET(req, { params }) {
   try {
@@ -95,7 +96,7 @@ export async function GET(req, { params }) {
         // Shuffle options if enabled
         let qOpts = clientSafeQuestion.options || [];
         if (quiz.shuffle_options) {
-          qOpts = [...qOpts].sort(() => Math.random() - 0.5);
+          qOpts = shuffleCopy(qOpts);
         }
         
         return {
@@ -106,7 +107,7 @@ export async function GET(req, { params }) {
       });
 
       if (quiz.shuffle_questions) {
-        structuredQuestions = structuredQuestions.sort(() => Math.random() - 0.5);
+        structuredQuestions = shuffleCopy(structuredQuestions);
       }
     } else {
       // If no active attempt started, do not return questions (Start Screen view)
