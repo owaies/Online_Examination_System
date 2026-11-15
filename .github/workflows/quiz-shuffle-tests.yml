@@ -1,0 +1,34 @@
+name: Quiz content shuffling tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/shuffle.mjs"
+      - "src/lib/shuffle.test.mjs"
+      - "src/app/api/quiz/[eid]/route.js"
+      - ".github/workflows/quiz-shuffle-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/shuffle.mjs"
+      - "src/lib/shuffle.test.mjs"
+      - "src/app/api/quiz/[eid]/route.js"
+      - ".github/workflows/quiz-shuffle-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shuffle-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test question and option shuffling
+        run: node --test src/lib/shuffle.test.mjs
