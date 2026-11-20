@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { normalizeConfirmedQuestionRows, parsePositiveInteger } from '@/lib/question-import-validation.mjs';
 
 function isFormula(val) {
   if (typeof val !== 'string') return false;
@@ -27,7 +28,7 @@ export async function POST(req) {
     }
 
     const { action, rows } = await req.json();
-    if (!action || !rows || !Array.isArray(rows)) {
+    if (!action || !Array.isArray(rows) || rows.length === 0 || rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
@@ -52,16 +53,18 @@ export async function POST(req) {
         const errors = [];
         const warnings = [];
 
-        const question = row.question;
-        const optA = row.option_a;
-        const optB = row.option_b;
-        const optC = row.option_c;
-        const optD = row.option_d;
-        const correct = row.correct_answer;
+        const question = typeof row.question === 'string' ? row.question.trim() : '';
+        const optA = typeof row.option_a === 'string' ? row.option_a.trim() : '';
+        const optB = typeof row.option_b === 'string' ? row.option_b.trim() : '';
+        const optC = typeof row.option_c === 'string' ? row.option_c.trim() : '';
+        const optD = typeof row.option_d === 'string' ? row.option_d.trim() : '';
+        const correct = typeof row.correct_answer === 'string' ? row.correct_answer : '';
         const marksStr = row.marks;
-        const difficulty = (row.difficulty || 'UNSPECIFIED').toUpperCase().trim();
-        const subjectName = (row.subject || '').toLowerCase().trim();
-        const topicName = (row.topic || '').toLowerCase().trim();
+        const difficulty = typeof row.difficulty === 'string' ? row.difficulty.toUpperCase().trim() : 'UNSPECIFIED';
+        const rawSubjectName = typeof row.subject === 'string' ? row.subject.trim() : '';
+        const subjectName = rawSubjectName.toLowerCase();
+        const rawTopicName = typeof row.topic === 'string' ? row.topic.trim() : '';
+        const topicName = rawTopicName.toLowerCase();
 
         if (!question) errors.push('Missing question text');
         if (!optA || !optB || !optC || !optD) errors.push('Missing options (a, b, c, d are all required)');
@@ -69,8 +72,8 @@ export async function POST(req) {
           errors.push('Correct answer must be A, B, C, or D');
         }
 
-        const marks = parseInt(marksStr);
-        if (isNaN(marks) || marks <= 0) {
+        const marks = parsePositiveInteger(marksStr);
+        if (marks === null) {
           errors.push('Marks must be a positive integer');
         }
 
@@ -117,9 +120,9 @@ export async function POST(req) {
           correct: correct?.toUpperCase()?.trim(),
           marks,
           difficulty,
-          subjectName: row.subject,
+          subjectName: rawSubjectName,
           subjectId,
-          topicName: row.topic,
+          topicName: rawTopicName,
           topicId,
           explanation: row.explanation,
           tags: row.tags ? row.tags.split(',').map(t => t.trim()) : [],
@@ -143,6 +146,13 @@ export async function POST(req) {
     }
 
     if (action === 'confirm') {
+      // Never trust client-side preview results as the authority for database writes.
+      // Rebuild tenant-scoped subject/topic IDs and validate every field again.
+      const confirmedRows = normalizeConfirmedQuestionRows(rows, subjects, topics);
+      if (!confirmedRows) {
+        return NextResponse.json({ error: 'One or more rows contain invalid question data or references.' }, { status: 400 });
+      }
+
       const importId = 'imp-' + Math.random().toString(36).substring(2, 11);
       let insertedCount = 0;
 
@@ -153,7 +163,7 @@ export async function POST(req) {
           VALUES (${importId}, ${instId}, ${email}, 'Question_Import_CSV', ${rows.length}, 'QUESTION')
         `;
 
-        for (const row of rows) {
+        for (const row of confirmedRows) {
           const qid = 'q-' + Math.random().toString(36).substring(2, 11);
           
           // Neutralize Spreadsheet Formula Injections
