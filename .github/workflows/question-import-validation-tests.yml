@@ -1,0 +1,34 @@
+name: Question import validation tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/question-import-validation.mjs"
+      - "src/lib/question-import-validation.test.mjs"
+      - "src/app/api/teacher/questions/import/route.js"
+      - ".github/workflows/question-import-validation-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/question-import-validation.mjs"
+      - "src/lib/question-import-validation.test.mjs"
+      - "src/app/api/teacher/questions/import/route.js"
+      - ".github/workflows/question-import-validation-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test confirmed question import validation
+        run: node --test src/lib/question-import-validation.test.mjs
