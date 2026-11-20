@@ -3,7 +3,7 @@ export function parsePositiveInteger(value) {
   if (typeof normalized === "number") {
     return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
   }
-  if (typeof normalized !== "string" || !/^\\d+$/.test(normalized)) {
+  if (typeof normalized !== "string" || !/^\d+$/.test(normalized)) {
     return null;
   }
   const parsed = Number(normalized);
@@ -20,7 +20,7 @@ export function normalizeConfirmedQuestionRows(rows, subjects, topics) {
   );
   const topicIds = new Map(
     topics.map((topic) => [
-      `${topic.subject_id}_${String(topic.name ?? "").trim().toLowerCase()}`,
+      String(topic.subject_id) + "_" + String(topic.name ?? "").trim().toLowerCase(),
       topic.id,
     ]),
   );
@@ -43,7 +43,7 @@ export function normalizeConfirmedQuestionRows(rows, subjects, topics) {
     const subjectId = subjectIds.get(subjectName.toLowerCase());
     const topicName = typeof row.topicName === "string" ? row.topicName.trim() : "";
     const topicId = topicName && subjectId
-      ? topicIds.get(`${subjectId}_${topicName.toLowerCase()}`) ?? null
+      ? topicIds.get(String(subjectId) + "_" + topicName.toLowerCase()) ?? null
       : null;
     const explanation = row.explanation == null
       ? ""
