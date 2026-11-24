@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { normalizeAttemptAnswers, normalizeAttemptSubmission } from "../src/lib/attempt-validation.mjs";
+import { resolveAttemptStart } from "../src/lib/attempt-start-policy.mjs";
 
 test("accepts string and numeric option identifiers", () => {
   assert.deepEqual(
@@ -54,4 +55,36 @@ test("rejects malformed attempt submission payloads", () => {
   for (const autoSubmit of ["true", 1, null, {}, []]) {
     assert.equal(normalizeAttemptSubmission({ autoSubmit }), null);
   }
+});
+
+test("resumes an active attempt even when it has reached the configured limit", () => {
+  assert.equal(
+    resolveAttemptStart({ hasActiveAttempt: true, attemptCount: 1, maxAttempts: 1 }),
+    "resume",
+  );
+});
+
+test("blocks a new attempt when the configured limit is reached", () => {
+  assert.equal(
+    resolveAttemptStart({ hasActiveAttempt: false, attemptCount: 1, maxAttempts: 1 }),
+    "limit-reached",
+  );
+});
+
+test("allows a new attempt while the student is below the configured limit", () => {
+  assert.equal(
+    resolveAttemptStart({ hasActiveAttempt: false, attemptCount: 1, maxAttempts: 2 }),
+    "start",
+  );
+});
+
+test("defaults invalid attempt limits to one and fails closed for invalid counts", () => {
+  assert.equal(
+    resolveAttemptStart({ hasActiveAttempt: false, attemptCount: 0, maxAttempts: 0 }),
+    "start",
+  );
+  assert.equal(
+    resolveAttemptStart({ hasActiveAttempt: false, attemptCount: "unknown", maxAttempts: 2 }),
+    "limit-reached",
+  );
 });
