@@ -1,6 +1,7 @@
 import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { resolveAttemptStart } from '@/lib/attempt-start-policy.mjs';
 
 export async function GET(req) {
   try {
@@ -99,33 +100,38 @@ export async function POST(req) {
       return NextResponse.json({ error: 'This exam is not published.' }, { status: 403 });
     }
 
-    // 4. Check Attempt limit
-    const attemptsResult = await sql`
-      SELECT COUNT(*) as count FROM "quiz_attempt"
-      WHERE eid = ${eid} AND email = ${email} AND institution_id = ${instId}
-    `;
-    const attemptCount = parseInt(attemptsResult[0]?.count || '0');
-    if (attemptCount >= (quiz.max_attempts || 1)) {
-      return NextResponse.json({ error: 'Maximum attempt limit reached for this exam.' }, { status: 403 });
-    }
-
-    // Check if there is an in-progress attempt that can be resumed
+    // 4. Resume an in-progress attempt before checking the limit for new attempts.
     const activeAttempt = await sql`
       SELECT id, attempt_number, started_at, answers
       FROM "quiz_attempt"
       WHERE eid = ${eid} AND email = ${email} AND institution_id = ${instId} AND status = 'IN_PROGRESS'
       LIMIT 1
     `;
+    const attemptsResult = activeAttempt.length > 0
+      ? null
+      : await sql`
+          SELECT COUNT(*) as count FROM "quiz_attempt"
+          WHERE eid = ${eid} AND email = ${email} AND institution_id = ${instId}
+        `;
+    const attemptCount = Number(attemptsResult?.[0]?.count || 0);
+    const startDecision = resolveAttemptStart({
+      hasActiveAttempt: activeAttempt.length > 0,
+      attemptCount,
+      maxAttempts: quiz.max_attempts,
+    });
 
-    if (activeAttempt.length > 0) {
+    if (startDecision === 'resume') {
       return NextResponse.json({
         success: true,
         attempt: activeAttempt[0],
         message: 'Resuming active attempt.'
       });
     }
+    if (startDecision === 'limit-reached') {
+      return NextResponse.json({ error: 'Maximum attempt limit reached for this exam.' }, { status: 403 });
+    }
 
-    // 5. Generate randomized/snapshotted question set
+    // 6. Generate randomized/snapshotted question set
     let questionSet = [];
     
     if (quiz.selection_mode === 'RANDOM_SET_PER_STUDENT' || quiz.blueprint_id || quiz.pool_id) {
@@ -195,7 +201,7 @@ export async function POST(req) {
       questionSet = quizQuestions;
     }
 
-    // 6. Create new attempt
+    // 7. Create new attempt
     const attemptId = 'att-' + Math.random().toString(36).substring(2, 15);
     const newAttemptNumber = attemptCount + 1;
 
