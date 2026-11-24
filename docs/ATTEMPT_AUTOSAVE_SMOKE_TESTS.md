@@ -27,3 +27,12 @@
 - Submit a valid attempt with `autoSubmit: true` and confirm it follows the automatic-submission status path.
 - Send malformed JSON, a non-object JSON value, or a non-boolean `autoSubmit` value; confirm the endpoint returns HTTP 400 without changing the attempt.
 - Omit `autoSubmit` and confirm the request retains the normal-submission default.
+
+## Starting and resuming attempts
+
+- Set an exam's maximum attempts to 1, start an attempt, and leave it in `IN_PROGRESS`.
+- Call the start endpoint again for the same student and exam; confirm it returns the existing attempt with the resume message instead of rejecting it because the attempt count equals the limit.
+- Submit or expire that attempt, then call the start endpoint again; confirm the configured limit is enforced and no additional attempt is inserted.
+- With a maximum of 2, complete one attempt and confirm a second attempt can start, while a third start is rejected.
+- Confirm the active-attempt lookup remains scoped to the student's email, institution, exam ID, and `IN_PROGRESS` status.
+- Run `node --test scratch/test_attempt_validation.mjs` for the pure attempt-start policy and autosave payload regression tests.
