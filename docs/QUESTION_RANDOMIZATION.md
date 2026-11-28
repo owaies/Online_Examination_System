@@ -4,6 +4,8 @@ When an active exam enables `shuffle_questions` or `shuffle_options`, the quiz d
 
 Both operations use the shared Fisher-Yates helper in `src/lib/shuffle.mjs`. Each pass chooses a swap index from the remaining unshuffled prefix, avoiding the distribution bias of sorting with a random comparator. The helper returns a new array and does not mutate the persisted question snapshot or option arrays.
 
+When a new student attempt is created from a question pool or blueprint, the attempt-start route uses the same helper to select questions within the eligible pool and each requested difficulty bucket. This keeps the saved question set unbiased while preserving the original database query results.
+
 ## Automated verification
 
 Run the focused regression suite from the repository root:
