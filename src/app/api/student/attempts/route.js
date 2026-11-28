@@ -2,6 +2,7 @@ import sql from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { resolveAttemptStart } from '@/lib/attempt-start-policy.mjs';
+import { shuffleCopy } from '@/lib/shuffle.mjs';
 
 export async function GET(req) {
   try {
@@ -169,9 +170,9 @@ export async function POST(req) {
         const mediumCount = parseInt(rules.medium || '0');
         const hardCount = parseInt(rules.hard || '0');
 
-        const easyQs = allEligible.filter(q => q.difficulty === 'EASY').sort(() => Math.random() - 0.5);
-        const mediumQs = allEligible.filter(q => q.difficulty === 'MEDIUM').sort(() => Math.random() - 0.5);
-        const hardQs = allEligible.filter(q => q.difficulty === 'HARD').sort(() => Math.random() - 0.5);
+        const easyQs = shuffleCopy(allEligible.filter(q => q.difficulty === 'EASY'));
+        const mediumQs = shuffleCopy(allEligible.filter(q => q.difficulty === 'MEDIUM'));
+        const hardQs = shuffleCopy(allEligible.filter(q => q.difficulty === 'HARD'));
 
         if (easyQs.length < easyCount || mediumQs.length < mediumCount || hardQs.length < hardCount) {
           return NextResponse.json({ error: `Not enough matching questions in Question Bank. Needs: ${easyCount} Easy, ${mediumCount} Medium, ${hardCount} Hard.` }, { status: 400 });
@@ -183,7 +184,7 @@ export async function POST(req) {
           ...hardQs.slice(0, hardCount)
         ];
       } else {
-        const randomized = allEligible.sort(() => Math.random() - 0.5);
+        const randomized = shuffleCopy(allEligible);
         if (randomized.length < quiz.total) {
           return NextResponse.json({ error: `Not enough questions in pool. Required: ${quiz.total}, Available: ${randomized.length}` }, { status: 400 });
         }
